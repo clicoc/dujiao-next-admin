@@ -329,4 +329,20 @@ export const adminAPI = {
   getCardSecretStats: (params?: any) => api.get<ApiResponse>('/admin/card-secrets/stats', { params }),
   getCardSecretBatches: (params?: any) => api.get<ApiResponse>('/admin/card-secrets/batches', { params }),
   getCardSecretTemplate: () => api.get<ApiResponse>('/admin/card-secrets/template'),
+  // Site Connections
+  getSiteConnections: (params?: any) => api.get<ApiResponse>('/admin/site-connections', { params }),
+  getSiteConnection: (id: number) => api.get<ApiResponse>(`/admin/site-connections/${id}`),
+  createSiteConnection: (data: any) => api.post<ApiResponse>('/admin/site-connections', data),
+  updateSiteConnection: (id: number, data: any) => api.put<ApiResponse>(`/admin/site-connections/${id}`, data),
+  deleteSiteConnection: (id: number) => api.delete<ApiResponse>(`/admin/site-connections/${id}`),
+  pingSiteConnection: (id: number) => api.post<ApiResponse>(`/admin/site-connections/${id}/ping`),
+  updateSiteConnectionStatus: (id: number, data: any) => api.put<ApiResponse>(`/admin/site-connections/${id}/status`, data),
+  // Product Mappings
+  getProductMappings: (params?: any) => api.get<ApiResponse>('/admin/product-mappings', { params }),
+  getProductMapping: (id: number) => api.get<ApiResponse>(`/admin/product-mappings/${id}`),
+  importUpstreamProduct: (data: any) => api.post<ApiResponse>('/admin/product-mappings/import', data),
+  syncProductMapping: (id: number) => api.post<ApiResponse>(`/admin/product-mappings/${id}/sync`),
+  updateProductMappingStatus: (id: number, data: any) => api.put<ApiResponse>(`/admin/product-mappings/${id}/status`, data),
+  deleteProductMapping: (id: number) => api.delete<ApiResponse>(`/admin/product-mappings/${id}`),
+  getUpstreamProducts: (params?: any) => api.get<ApiResponse>('/admin/upstream-products', { params }),
 }

@@ -149,6 +149,18 @@ const routes = [
         component: () => import('@/views/admin/AuthzAuditLogs.vue'),
         meta: { permission: 'GET:/admin/authz/audit-logs' },
       },
+      {
+        path: 'site-connections',
+        name: 'site-connections',
+        component: () => import('@/views/admin/SiteConnections.vue'),
+        meta: { permission: 'GET:/admin/site-connections' },
+      },
+      {
+        path: 'product-mappings',
+        name: 'product-mappings',
+        component: () => import('@/views/admin/ProductMappings.vue'),
+        meta: { permission: 'GET:/admin/product-mappings' },
+      },
     ],
   },
 ]

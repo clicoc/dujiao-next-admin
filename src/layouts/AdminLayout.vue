@@ -31,6 +31,7 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Link,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -236,6 +237,25 @@ const navGroups = computed<NavGroup[]>(() => {
           to: '/affiliates/withdraws',
           icon: WalletCards,
           permission: 'GET:/admin/affiliates/withdraws',
+        },
+      ],
+    },
+    {
+      id: 'integration',
+      label: t('admin.navGroups.integrationManagement'),
+      icon: Link,
+      items: [
+        {
+          label: t('admin.navItems.siteConnections'),
+          to: '/site-connections',
+          icon: Link,
+          permission: 'GET:/admin/site-connections',
+        },
+        {
+          label: t('admin.navItems.productMappings'),
+          to: '/product-mappings',
+          icon: Boxes,
+          permission: 'GET:/admin/product-mappings',
         },
       ],
     },
