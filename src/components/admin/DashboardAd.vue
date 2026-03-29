@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { AdRenderResponse, AdRenderItemDTO } from '@/api/types'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   slotCode: string
@@ -184,7 +187,7 @@ onBeforeUnmount(() => {
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-          <div class="absolute right-1.5 top-1.5 text-xs text-muted-foreground/40">Ad</div>
+          <div class="absolute right-1.5 top-1.5 text-xs text-muted-foreground/40">{{ t('admin.dashboard.ad.label') }}</div>
         </div>
       </div>
 
@@ -227,7 +230,7 @@ onBeforeUnmount(() => {
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
-              <div class="absolute right-1.5 top-1.5 text-xs text-muted-foreground/40">Ad</div>
+              <div class="absolute right-1.5 top-1.5 text-xs text-muted-foreground/40">{{ t('admin.dashboard.ad.label') }}</div>
             </div>
           </div>
         </div>
@@ -285,7 +288,7 @@ onBeforeUnmount(() => {
         >
           {{ item.cta_label }}
         </button>
-        <div class="mt-1 text-right text-[10px] text-muted-foreground/40">Ad</div>
+        <div class="mt-1 text-right text-[10px] text-muted-foreground/40">{{ t('admin.dashboard.ad.label') }}</div>
       </div>
     </template>
 
@@ -316,7 +319,7 @@ onBeforeUnmount(() => {
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-        <span class="text-[10px] text-muted-foreground/40">Ad</span>
+        <span class="text-[10px] text-muted-foreground/40">{{ t('admin.dashboard.ad.label') }}</span>
       </div>
     </template>
 
@@ -324,8 +327,8 @@ onBeforeUnmount(() => {
     <template v-else-if="layout === 'compact'">
       <div class="rounded-xl border border-border bg-card">
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
-          <span class="text-xs font-medium text-muted-foreground">Sponsored</span>
-          <span class="text-[10px] text-muted-foreground/40">Ad</span>
+          <span class="text-xs font-medium text-muted-foreground">{{ t('admin.dashboard.ad.sponsored') }}</span>
+          <span class="text-[10px] text-muted-foreground/40">{{ t('admin.dashboard.ad.label') }}</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-1 px-4 py-2.5">
           <div
@@ -350,7 +353,7 @@ onBeforeUnmount(() => {
             class="text-xs font-medium text-primary hover:underline"
             @click="compactExpanded = !compactExpanded"
           >
-            {{ compactExpanded ? 'Show less' : `Show all ${visibleItems.length} sponsors` }}
+            {{ compactExpanded ? t('admin.dashboard.ad.showLess') : t('admin.dashboard.ad.showAll', { count: visibleItems.length }) }}
           </button>
         </div>
       </div>

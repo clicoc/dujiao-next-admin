@@ -94,6 +94,20 @@ const channelTypeLabel = (value?: string) => {
   return map[value] || value
 }
 
+const itemProfit = (item: AdminOrderItem) => {
+  const revenue = parseMoneyValue(item.unit_price) * (item.quantity || 1)
+    - parseMoneyValue(item.coupon_discount_amount)
+    - parseMoneyValue(item.promotion_discount_amount)
+    - parseMoneyValue(item.member_discount_amount)
+  const cost = parseMoneyValue(item.cost_price) * (item.quantity || 1)
+  return Number((revenue - cost).toFixed(2))
+}
+
+const orderProfit = (order: AdminOrder | null) => {
+  if (!order?.items?.length) return 0
+  return Number(order.items.reduce((sum, item) => sum + itemProfit(item), 0).toFixed(2))
+}
+
 const hasWalletPayment = (order: AdminOrder) => hasPositiveAmount(order?.wallet_paid_amount)
 const hasOnlinePayment = (order: AdminOrder) => hasPositiveAmount(order?.online_paid_amount)
 
@@ -561,6 +575,7 @@ watch(
                   </div>
                   <div class="space-y-1 text-left md:text-right">
                     <div>{{ t('orderDetail.unitPriceLabel') }}：{{ formatMoney(item.unit_price, selectedOrder.currency) }}</div>
+                    <div>{{ t('admin.orders.costPrice') }}：{{ formatMoney(item.cost_price, selectedOrder.currency) }}</div>
                     <div>{{ t('orderDetail.totalPriceLabel') }}：{{ formatMoney(item.total_price, selectedOrder.currency) }}</div>
                     <div v-if="hasPositiveAmount(item.coupon_discount_amount)">
                       {{ t('orderDetail.couponDiscountLabel') }}：{{ formatMoney(item.coupon_discount_amount, selectedOrder.currency) }}
@@ -571,8 +586,16 @@ watch(
                     <div v-if="hasPositiveAmount(item.member_discount_amount)" class="text-amber-700">
                       {{ t('orderDetail.memberDiscountLabel') }}：{{ formatMoney(item.member_discount_amount, selectedOrder.currency) }}
                     </div>
+                    <div class="font-medium text-emerald-700">
+                      {{ t('admin.orders.itemProfit') }}：{{ formatMoney(itemProfit(item).toFixed(2), selectedOrder.currency) }}
+                    </div>
                   </div>
                 </div>
+              </div>
+            </div>
+            <div v-if="selectedOrder.items && selectedOrder.items.length" class="mt-3 flex justify-end">
+              <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-2 text-sm font-semibold text-emerald-700">
+                {{ t('admin.orders.orderProfit') }}：{{ formatMoney(orderProfit(selectedOrder).toFixed(2), selectedOrder.currency) }}
               </div>
             </div>
             <div v-else class="text-xs text-muted-foreground">{{ t('orderDetail.noItems') }}</div>
@@ -627,6 +650,7 @@ watch(
                       </div>
                       <div class="space-y-1 text-left md:text-right">
                         <div>{{ t('orderDetail.unitPriceLabel') }}：{{ formatMoney(item.unit_price, selectedOrder.currency) }}</div>
+                        <div>{{ t('admin.orders.costPrice') }}：{{ formatMoney(item.cost_price, selectedOrder.currency) }}</div>
                         <div>{{ t('orderDetail.totalPriceLabel') }}：{{ formatMoney(item.total_price, selectedOrder.currency) }}</div>
                         <div v-if="hasPositiveAmount(item.coupon_discount_amount)">
                           {{ t('orderDetail.couponDiscountLabel') }}：{{ formatMoney(item.coupon_discount_amount, selectedOrder.currency) }}
@@ -636,6 +660,9 @@ watch(
                         </div>
                         <div v-if="hasPositiveAmount(item.member_discount_amount)" class="text-amber-700">
                           {{ t('orderDetail.memberDiscountLabel') }}：{{ formatMoney(item.member_discount_amount, selectedOrder.currency) }}
+                        </div>
+                        <div class="font-medium text-emerald-700">
+                          {{ t('admin.orders.itemProfit') }}：{{ formatMoney(itemProfit(item).toFixed(2), selectedOrder.currency) }}
                         </div>
                       </div>
                     </div>

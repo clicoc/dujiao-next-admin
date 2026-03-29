@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, getLocalizedText } from '@/utils/format'
+import type { AdminDashboardInventoryAlert } from '@/api/types'
 import DashboardAd from '@/components/admin/DashboardAd.vue'
 
 interface DashboardAlertItem {
@@ -38,6 +39,9 @@ interface DashboardOverview {
     pending_payment_orders: number
     processing_orders: number
     gmv_paid: string
+    total_cost: string
+    total_profit: string
+    profit_margin: string
     payments_total: number
     payments_success: number
     payments_failed: number
@@ -46,6 +50,8 @@ interface DashboardOverview {
     active_products: number
     out_of_stock_products: number
     low_stock_products: number
+    out_of_stock_skus: number
+    low_stock_skus: number
     auto_available_secrets: number
     manual_available_units: number
   }
@@ -60,6 +66,7 @@ interface DashboardTrendPoint {
   payments_success: number
   payments_failed: number
   gmv_paid: string
+  profit: string
 }
 
 interface DashboardTrends {
@@ -76,6 +83,8 @@ interface DashboardProductRanking {
   paid_orders: number
   quantity: number
   paid_amount: string
+  total_cost: string
+  profit: string
 }
 
 interface DashboardChannelRanking {
@@ -103,10 +112,12 @@ const { t } = useI18n()
 const loadingOverview = ref(false)
 const loadingTrends = ref(false)
 const loadingRankings = ref(false)
+const loadingInventoryAlerts = ref(false)
 const dashboardError = ref('')
 const overview = ref<DashboardOverview | null>(null)
 const trends = ref<DashboardTrends | null>(null)
 const rankings = ref<DashboardRankings | null>(null)
+const inventoryAlerts = ref<AdminDashboardInventoryAlert[]>([])
 
 const filters = reactive({
   range: '7d',
@@ -251,10 +262,22 @@ const loadRankings = async (forceRefresh = false) => {
   }
 }
 
+const loadInventoryAlerts = async () => {
+  loadingInventoryAlerts.value = true
+  try {
+    const response = await adminAPI.getDashboardInventoryAlerts()
+    inventoryAlerts.value = (response.data.data as unknown as AdminDashboardInventoryAlert[]) || []
+  } catch {
+    inventoryAlerts.value = []
+  } finally {
+    loadingInventoryAlerts.value = false
+  }
+}
+
 const loadDashboard = async (forceRefresh = false) => {
   dashboardError.value = ''
   try {
-    await Promise.all([loadOverview(forceRefresh), loadTrends(forceRefresh), loadRankings(forceRefresh)])
+    await Promise.all([loadOverview(forceRefresh), loadTrends(forceRefresh), loadRankings(forceRefresh), loadInventoryAlerts()])
   } catch (error: any) {
     dashboardError.value = error?.message || t('admin.dashboard.errors.fetchFailed')
   }
@@ -297,6 +320,23 @@ const alertLabel = (type: string) => {
   const key = `admin.dashboard.alertTypes.${type}`
   const translated = t(key)
   return translated === key ? type : translated
+}
+
+const inventoryAlertLabel = (item: AdminDashboardInventoryAlert) => {
+  return item.alert_type === 'out_of_stock_products'
+    ? t('admin.dashboard.inventoryAlerts.outOfStock')
+    : t('admin.dashboard.inventoryAlerts.lowStock')
+}
+
+const inventoryAlertBadgeClass = (item: AdminDashboardInventoryAlert) => {
+  return item.alert_type === 'out_of_stock_products'
+    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+}
+
+const skuSpecLabel = (item: AdminDashboardInventoryAlert) => {
+  if (!item.sku_spec_values || Object.keys(item.sku_spec_values).length === 0) return ''
+  return Object.values(item.sku_spec_values).join(' / ')
 }
 
 const quickActions = computed(() => [
@@ -390,6 +430,33 @@ onMounted(() => {
 
       <Card class="min-w-0">
         <CardHeader class="pb-2">
+          <CardTitle class="text-xs font-medium text-muted-foreground">{{ t('admin.dashboard.kpi.totalCost') }}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-semibold">{{ formatMoney(overview?.kpi.total_cost, overview?.currency) }}</div>
+        </CardContent>
+      </Card>
+
+      <Card class="min-w-0">
+        <CardHeader class="pb-2">
+          <CardTitle class="text-xs font-medium text-muted-foreground">{{ t('admin.dashboard.kpi.totalProfit') }}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-semibold">{{ formatMoney(overview?.kpi.total_profit, overview?.currency) }}</div>
+        </CardContent>
+      </Card>
+
+      <Card class="min-w-0">
+        <CardHeader class="pb-2">
+          <CardTitle class="text-xs font-medium text-muted-foreground">{{ t('admin.dashboard.kpi.profitMargin') }}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-semibold">{{ overview?.kpi.profit_margin ?? '0.00' }}%</div>
+        </CardContent>
+      </Card>
+
+      <Card class="min-w-0">
+        <CardHeader class="pb-2">
           <CardTitle class="text-xs font-medium text-muted-foreground">{{ t('admin.dashboard.kpi.pendingOrders') }}</CardTitle>
         </CardHeader>
         <CardContent>
@@ -415,6 +482,7 @@ onMounted(() => {
         <CardContent>
           <div class="text-2xl font-semibold">{{ overview?.kpi.low_stock_products ?? 0 }}</div>
           <div class="mt-1 text-xs text-muted-foreground">{{ t('admin.dashboard.kpi.outOfStockProducts') }}: {{ overview?.kpi.out_of_stock_products ?? 0 }}</div>
+          <div class="mt-1 text-xs text-muted-foreground">{{ t('admin.dashboard.kpi.outOfStockSKUs') }}: {{ overview?.kpi.out_of_stock_skus ?? 0 }} / {{ t('admin.dashboard.kpi.lowStockSKUs') }}: {{ overview?.kpi.low_stock_skus ?? 0 }}</div>
         </CardContent>
       </Card>
 
@@ -474,6 +542,7 @@ onMounted(() => {
                     <div class="w-2 rounded-t bg-emerald-500/80" :style="{ height: orderPaidHeight(point.orders_paid) }" :title="`${t('admin.dashboard.trends.ordersPaid')}: ${point.orders_paid}`"></div>
                   </div>
                   <div class="text-[10px] text-muted-foreground">{{ shortDate(point.date) }}</div>
+                  <div class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400" :title="`${t('admin.dashboard.trends.profit')}: ${formatMoney(point.profit, overview?.currency)}`">{{ formatMoney(point.profit, overview?.currency) }}</div>
                 </div>
               </div>
             </div>
@@ -554,7 +623,10 @@ onMounted(() => {
                 <span>{{ t('admin.dashboard.rankings.paidOrders') }}: {{ item.paid_orders }}</span>
                 <span>{{ t('admin.dashboard.rankings.quantity') }}: {{ item.quantity }}</span>
               </div>
-              <div class="mt-1 text-xs font-semibold text-foreground">{{ t('admin.dashboard.rankings.paidAmount') }}: {{ formatMoney(item.paid_amount, overview?.currency) }}</div>
+              <div class="mt-1 flex flex-col gap-1 text-xs font-semibold text-foreground sm:flex-row sm:items-center sm:justify-between">
+                <span>{{ t('admin.dashboard.rankings.paidAmount') }}: {{ formatMoney(item.paid_amount, overview?.currency) }}</span>
+                <span>{{ t('admin.dashboard.rankings.profit') }}: {{ formatMoney(item.profit, overview?.currency) }}</span>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -594,10 +666,10 @@ onMounted(() => {
           <CardTitle class="text-sm">{{ t('admin.dashboard.alerts.title') }}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div v-if="!overview || overview.alerts.length === 0" class="text-sm text-muted-foreground">{{ t('admin.dashboard.alerts.empty') }}</div>
-          <div v-else class="space-y-2">
+          <!-- 通用告警（待支付订单、失败支付等） -->
+          <div v-if="overview && overview.alerts.filter(a => a.type !== 'out_of_stock_products' && a.type !== 'low_stock_products').length > 0" class="space-y-2 mb-3">
             <div
-              v-for="alert in overview.alerts"
+              v-for="alert in overview.alerts.filter(a => a.type !== 'out_of_stock_products' && a.type !== 'low_stock_products')"
               :key="`${alert.type}-${alert.value}`"
               class="rounded-lg border px-3 py-2 text-sm"
               :class="alertClass(alert.level)"
@@ -607,6 +679,36 @@ onMounted(() => {
                 <span class="font-mono text-xs">{{ alert.value }}</span>
               </div>
             </div>
+          </div>
+          <!-- SKU 级别库存告警 -->
+          <div v-if="inventoryAlerts.length > 0" class="space-y-2">
+            <div class="text-xs font-medium text-muted-foreground mb-1">{{ t('admin.dashboard.inventoryAlerts.title') }}</div>
+            <div
+              v-for="(item, idx) in inventoryAlerts"
+              :key="`inv-${item.product_id}-${item.sku_id || 0}-${idx}`"
+              class="rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <router-link :to="{ path: '/products', query: { product_id: item.product_id } }" class="font-medium text-primary underline-offset-4 hover:underline break-words">
+                    {{ getLocalizedText(item.product_title) }}
+                  </router-link>
+                  <div v-if="skuSpecLabel(item)" class="text-xs text-muted-foreground mt-0.5">
+                    SKU: {{ skuSpecLabel(item) }}
+                    <span v-if="item.sku_code" class="ml-1">({{ item.sku_code }})</span>
+                  </div>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <span class="font-mono text-xs text-muted-foreground">{{ item.available_stock }}</span>
+                  <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium" :class="inventoryAlertBadgeClass(item)">
+                    {{ inventoryAlertLabel(item) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="(!overview || overview.alerts.length === 0) && inventoryAlerts.length === 0" class="text-sm text-muted-foreground">
+            {{ t('admin.dashboard.alerts.empty') }}
           </div>
         </CardContent>
       </Card>

@@ -27,9 +27,10 @@ interface LocalOrder {
 }
 
 type ProcurementOrderWithRelations = AdminProcurementOrder & {
-  connection?: { name?: string; id?: number }
+  connection?: { name?: string; id?: number; exchange_rate?: number }
   local_order?: LocalOrder
   currency?: string
+  upstream_currency?: string
 }
 
 const { t } = useI18n()
@@ -251,11 +252,23 @@ const getOrderTitle = (order: ProcurementOrderWithRelations) => {
   return order.local_order_no || '-'
 }
 
+const getExchangeRate = (order: ProcurementOrderWithRelations) => {
+  const rate = order.connection?.exchange_rate
+  return rate && rate > 0 ? rate : 1
+}
+
 const profitAmount = (order: ProcurementOrderWithRelations) => {
   const sell = parseFloat(String(order.local_sell_amount || 0))
   const cost = parseFloat(String(order.upstream_amount || 0))
   if (!cost || !sell) return null
-  return (sell - cost).toFixed(2)
+  const localCost = cost * getExchangeRate(order)
+  return (sell - localCost).toFixed(2)
+}
+
+const localCostAmount = (order: ProcurementOrderWithRelations) => {
+  const cost = parseFloat(String(order.upstream_amount || 0))
+  if (!cost) return null
+  return (cost * getExchangeRate(order)).toFixed(2)
 }
 
 const profitClass = (order: ProcurementOrderWithRelations) => {
@@ -439,7 +452,11 @@ onMounted(() => {
             </div>
             <div>
               <span class="text-muted-foreground">{{ t('procurement.columns.upstreamAmount') }}</span>
-              <div class="mt-0.5 font-medium text-foreground">{{ order.upstream_amount && String(order.upstream_amount) !== '0.00' ? formatMoney(order.upstream_amount, order.currency) : '-' }}</div>
+              <div class="mt-0.5 font-medium text-foreground">{{ order.upstream_amount && String(order.upstream_amount) !== '0.00' ? formatMoney(order.upstream_amount, order.upstream_currency || order.currency) : '-' }}</div>
+            </div>
+            <div v-if="getExchangeRate(order) !== 1 && localCostAmount(order) !== null">
+              <span class="text-muted-foreground">{{ t('procurement.columns.localCost') }}</span>
+              <div class="mt-0.5 font-medium text-foreground">{{ formatMoney(localCostAmount(order)!, order.currency) }}</div>
             </div>
             <div>
               <span class="text-muted-foreground">{{ t('procurement.detail.profit') }}</span>
@@ -547,7 +564,7 @@ onMounted(() => {
             <div class="border-b border-border bg-muted/30 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase">
               {{ t('procurement.detail.financial') }}
             </div>
-            <div class="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div class="grid grid-cols-1 divide-y divide-border" :class="getExchangeRate(detailOrder) !== 1 ? 'sm:grid-cols-4 sm:divide-x sm:divide-y-0' : 'sm:grid-cols-3 sm:divide-x sm:divide-y-0'">
               <div class="p-4 text-center">
                 <div class="text-xs text-muted-foreground">{{ t('procurement.columns.localSellAmount') }}</div>
                 <div class="mt-1 text-lg font-bold">{{ formatMoney(detailOrder.local_sell_amount, detailOrder.currency) }}</div>
@@ -555,8 +572,15 @@ onMounted(() => {
               <div class="p-4 text-center">
                 <div class="text-xs text-muted-foreground">{{ t('procurement.columns.upstreamAmount') }}</div>
                 <div class="mt-1 text-lg font-bold">
-                  {{ detailOrder.upstream_amount && String(detailOrder.upstream_amount) !== '0.00' ? formatMoney(detailOrder.upstream_amount, detailOrder.currency) : '-' }}
+                  {{ detailOrder.upstream_amount && String(detailOrder.upstream_amount) !== '0.00' ? formatMoney(detailOrder.upstream_amount, detailOrder.upstream_currency || detailOrder.currency) : '-' }}
                 </div>
+              </div>
+              <div v-if="getExchangeRate(detailOrder) !== 1" class="p-4 text-center">
+                <div class="text-xs text-muted-foreground">{{ t('procurement.columns.localCost') }}</div>
+                <div class="mt-1 text-lg font-bold">
+                  {{ localCostAmount(detailOrder) !== null ? formatMoney(localCostAmount(detailOrder)!, detailOrder.currency) : '-' }}
+                </div>
+                <div class="mt-0.5 text-xs text-muted-foreground">{{ t('procurement.detail.exchangeRate') }}: {{ getExchangeRate(detailOrder) }}</div>
               </div>
               <div class="p-4 text-center">
                 <div class="text-xs text-muted-foreground">{{ t('procurement.detail.profit') }}</div>

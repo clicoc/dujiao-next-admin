@@ -90,6 +90,7 @@ type SKUFormItem = {
   sku_code: string
   spec_values: Record<string, string>
   price_amount: number
+  cost_price_amount: number
   manual_stock_total: number
   is_active: boolean
   sort_order: number
@@ -128,6 +129,7 @@ const createSKUFormItem = (raw?: Partial<AdminProductSKU>): SKUFormItem => ({
     }, {}),
   },
   price_amount: Number(raw?.price_amount || 0),
+  cost_price_amount: Number(raw?.cost_price_amount || 0),
   manual_stock_total: toSafeStockTotal(raw?.manual_stock_total),
   is_active: raw?.is_active ?? true,
   sort_order: Number(raw?.sort_order || 0),
@@ -141,6 +143,7 @@ const form = reactive({
   description: { 'zh-CN': '', 'zh-TW': '', 'en-US': '' } as LocalizedText,
   content: { 'zh-CN': '', 'zh-TW': '', 'en-US': '' } as LocalizedText,
   price_amount: 0,
+  cost_price_amount: 0,
   images: [] as string[],
   tags: [] as string[],
   purchase_type: 'member',
@@ -412,6 +415,7 @@ const normalizeSKUsForSubmit = () => {
       sku_code: skuCode,
       spec_values: specValues,
       price_amount: priceAmount,
+      cost_price_amount: Number(item.cost_price_amount) || 0,
       manual_stock_total: manualStockTotal,
       is_active: isActive,
       sort_order: Number(item.sort_order) || 0,
@@ -481,6 +485,7 @@ const populateForm = (product: AdminProduct) => {
     description: product.description || { 'zh-CN': '', 'zh-TW': '', 'en-US': '' },
     content: product.content || { 'zh-CN': '', 'zh-TW': '', 'en-US': '' },
     price_amount: Number(product.price_amount || 0),
+    cost_price_amount: Number(product.cost_price_amount || 0),
     images: imagesList,
     tags: tagsList,
     purchase_type: product.purchase_type || 'member',
@@ -514,9 +519,11 @@ const handleSubmit = async () => {
     const normalizedSKUs = normalizeSKUsForSubmit()
     const activeSKU = normalizedSKUs.find((item) => item.is_active)
     let effectivePrice = Number(form.price_amount)
+    let effectiveCostPrice = Number(form.cost_price_amount)
     if (normalizedSKUs.length > 0) {
       const priceSource = activeSKU || normalizedSKUs[0]!
       effectivePrice = Number(priceSource.price_amount)
+      effectiveCostPrice = Number(priceSource.cost_price_amount || 0)
     }
     const normalizedMaxPurchaseQuantity = Number(form.max_purchase_quantity)
     const effectiveManualStockTotal = normalizedSKUs.length
@@ -537,6 +544,7 @@ const handleSubmit = async () => {
       description: form.description,
       content: form.content,
       price_amount: effectivePrice,
+      cost_price_amount: effectiveCostPrice,
       images: form.images,
       tags: form.tags,
       purchase_type: form.purchase_type,
@@ -897,18 +905,23 @@ watch(
                 </Button>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
                 <div class="md:col-span-1">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuCode') }}</label>
                   <Input v-model="sku.sku_code" :placeholder="t('admin.products.form.skuCodePlaceholder')" :disabled="editingIsMapped" />
                 </div>
-                <div class="md:col-span-2">
+                <div class="md:col-span-1">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuSpec', { lang: getCurrentLangName() }) }}</label>
                   <Input v-model="sku.spec_values[currentLang]" :placeholder="t('admin.products.form.skuSpecPlaceholder')" :disabled="editingIsMapped" />
                 </div>
                 <div class="md:col-span-1">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuPrice') }}</label>
                   <Input v-model.number="sku.price_amount" type="number" step="0.01" min="0" :placeholder="t('admin.products.form.skuPricePlaceholder')" />
+                </div>
+                <div class="md:col-span-1">
+                  <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuCostPrice') }}</label>
+                  <Input v-model.number="sku.cost_price_amount" type="number" step="0.01" min="0" :placeholder="t('admin.products.form.skuCostPricePlaceholder')" :disabled="editingIsMapped" />
+                  <p v-if="editingIsMapped" class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.costPriceAutoFromUpstream') }}</p>
                 </div>
                 <div v-if="form.fulfillment_type === 'manual'" class="md:col-span-1">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuManualStock') }}</label>
@@ -946,6 +959,22 @@ watch(
               {{ t('admin.products.form.priceAmountSkuTip') }}
             </p>
             <p v-else class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.priceAmountTip') }}</p>
+          </div>
+
+          <div class="col-span-1">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.costPriceAmount') }}</label>
+            <Input
+              v-model.number="form.cost_price_amount"
+              type="number"
+              step="0.01"
+              min="0"
+              :placeholder="t('admin.products.form.costPriceAmountPlaceholder')"
+              :disabled="form.skus.length > 0 || editingIsMapped"
+            />
+            <p v-if="form.skus.length > 0" class="mt-1 text-xs text-muted-foreground">
+              {{ t('admin.products.form.costPriceAmountSkuTip') }}
+            </p>
+            <p v-else-if="editingIsMapped" class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.costPriceAutoFromUpstream') }}</p>
           </div>
 
           <div class="col-span-1">

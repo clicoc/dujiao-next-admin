@@ -15,7 +15,7 @@ import {
   orderStatusClass,
   orderStatusLabel,
 } from '@/utils/status'
-import { formatDate, formatMoney, toRFC3339 } from '@/utils/format'
+import { formatDate, formatMoney, getLocalizedText, toRFC3339 } from '@/utils/format'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import OrderFulfillmentModal from './components/OrderFulfillmentModal.vue'
 
@@ -281,11 +281,12 @@ watch(
     </div>
 
     <div class="rounded-xl border border-border bg-card overflow-x-auto">
-      <Table class="min-w-[1180px]">
+      <Table class="min-w-[1420px]">
         <TableHeader class="bg-muted/40 text-xs uppercase text-muted-foreground">
           <TableRow>
             <TableHead class="px-6 py-3">{{ t('admin.orders.table.id') }}</TableHead>
             <TableHead class="px-6 py-3 min-w-[220px]">{{ t('admin.orders.table.orderNo') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[240px]">{{ t('admin.orders.table.items') }}</TableHead>
             <TableHead class="px-6 py-3 min-w-[260px]">{{ t('admin.orders.table.user') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.orders.table.ip') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.orders.table.amount') }}</TableHead>
@@ -296,12 +297,12 @@ watch(
         </TableHeader>
         <TableBody class="divide-y divide-border">
           <TableRow v-if="loading">
-            <TableCell :colspan="8" class="p-0">
-              <TableSkeleton :columns="8" :rows="5" />
+            <TableCell :colspan="9" class="p-0">
+              <TableSkeleton :columns="9" :rows="5" />
             </TableCell>
           </TableRow>
           <TableRow v-else-if="orders.length === 0">
-            <TableCell colspan="8" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.orders.empty') }}</TableCell>
+            <TableCell colspan="9" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.orders.empty') }}</TableCell>
           </TableRow>
           <TableRow v-for="order in orders" :key="order.id" class="hover:bg-muted/30">
             <TableCell class="px-6 py-4">
@@ -309,6 +310,18 @@ watch(
             </TableCell>
             <TableCell class="min-w-[220px] px-6 py-4">
               <div class="break-all font-medium text-foreground">{{ order.order_no }}</div>
+            </TableCell>
+            <TableCell class="min-w-[240px] px-6 py-4">
+              <div v-if="order.items && order.items.length > 0" class="space-y-1">
+                <div v-for="item in order.items" :key="item.id" class="text-xs">
+                  <span class="text-foreground">{{ getLocalizedText(item.product_title) || getLocalizedText(item.title) || '-' }}</span>
+                  <span v-if="item.sku_spec_values && Object.keys(item.sku_spec_values).length > 0" class="ml-1 text-muted-foreground">
+                    ({{ Object.values(item.sku_spec_values).join(' / ') }})
+                  </span>
+                  <span class="ml-1 text-muted-foreground">x{{ item.quantity }}</span>
+                </div>
+              </div>
+              <span v-else class="text-xs text-muted-foreground">-</span>
             </TableCell>
             <TableCell class="min-w-[260px] px-6 py-4 text-xs text-muted-foreground">
               <div v-if="order.user_id">

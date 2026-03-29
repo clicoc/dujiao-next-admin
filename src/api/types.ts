@@ -31,6 +31,7 @@ export interface AdminProductSKU {
   sku_code: string
   spec_values: Record<string, string>
   price_amount: number
+  cost_price_amount: number
   manual_stock_total: number
   manual_stock_locked: number
   manual_stock_sold: number
@@ -51,6 +52,7 @@ export interface AdminProduct {
   description: LocalizedText
   content: LocalizedText
   price_amount: number
+  cost_price_amount: number
   images: string[]
   tags: string[]
   purchase_type: string
@@ -101,6 +103,7 @@ export interface AdminOrderItem {
   sku_spec_values: Record<string, string>
   quantity: number
   unit_price: number
+  cost_price: number
   total_price: number
   fulfillment_type: string
   created_at: string
@@ -466,6 +469,10 @@ export interface AdminSiteConnection {
   is_active: boolean
   last_ping_at?: string
   last_ping_status?: string
+  exchange_rate?: number
+  price_markup_percent?: number
+  price_rounding_mode?: string
+  auto_sync_price?: boolean
   created_at: string
   updated_at: string
 }
@@ -606,6 +613,17 @@ export interface AdminDashboardRanking {
   product_title: string
   total_orders: number
   total_revenue: number
+}
+
+export interface AdminDashboardInventoryAlert {
+  product_id: number
+  sku_id?: number
+  product_title: Record<string, string>
+  sku_code?: string
+  sku_spec_values?: Record<string, string>
+  fulfillment_type: string
+  alert_type: string
+  available_stock: number
 }
 
 // --- Ad Proxy ---
