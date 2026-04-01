@@ -2,9 +2,10 @@
 import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { AdminProduct, AdminCategory, AdminProductSKU, LocalizedText } from '@/api/types'
+import type { AdminProduct, AdminCategory, AdminProductSKU, AdminPaymentChannel, LocalizedText } from '@/api/types'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import RichEditor from '@/components/RichEditor.vue'
-import { getFirstImageUrl } from '@/utils/image'
+// image utils removed - MediaPicker handles image display
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,12 +29,11 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
-const uploading = ref(false)
 const submitting = ref(false)
 const isEditing = ref(false)
+const paymentChannels = ref<AdminPaymentChannel[]>([])
 const editingIsMapped = ref(false)
 const initialCategoryID = ref<number | null>(null)
-const fileInput = ref<HTMLInputElement | null>(null)
 const newTag = ref('')
 const currentLang = ref('zh-CN')
 
@@ -152,11 +152,44 @@ const form = reactive({
   manual_stock_total: 0,
   skus: [] as SKUFormItem[],
   category_id: null as number | null,
+  payment_channel_ids: [] as number[],
   is_affiliate_enabled: false,
   is_active: true,
   sort_order: 0,
   manual_form_schema: { fields: [] as ManualFormField[] },
 })
+
+const loadPaymentChannels = async () => {
+  try {
+    const res = await adminAPI.getPaymentChannels({ page: 1, page_size: 200 })
+    paymentChannels.value = (res.data?.data ?? []).filter((ch: AdminPaymentChannel) => ch.is_active)
+  } catch {
+    paymentChannels.value = []
+  }
+}
+
+const parsePaymentChannelIDs = (raw: string | number[] | null | undefined): number[] => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter((id) => Number.isFinite(id) && id > 0)
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === '[]') return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.filter((id: unknown) => typeof id === 'number' && id > 0)
+    } catch { /* ignore */ }
+  }
+  return []
+}
+
+const togglePaymentChannel = (channelId: number) => {
+  const idx = form.payment_channel_ids.indexOf(channelId)
+  if (idx >= 0) {
+    form.payment_channel_ids.splice(idx, 1)
+  } else {
+    form.payment_channel_ids.push(channelId)
+  }
+}
 
 const getCurrentLangName = () => {
   return languages.value.find((item) => item.code === currentLang.value)?.name || t('admin.common.lang.zhCN')
@@ -450,6 +483,7 @@ const resetForm = () => {
     manual_stock_total: 0,
     skus: [],
     category_id: null,
+    payment_channel_ids: [],
     is_affiliate_enabled: false,
     is_active: true,
     sort_order: 0,
@@ -494,6 +528,7 @@ const populateForm = (product: AdminProduct) => {
     manual_stock_total: resolveManualStockMetrics(product).total,
     skus: Array.isArray(product.skus) ? product.skus.map((item: AdminProductSKU) => createSKUFormItem(item)) : [],
     category_id: Number(product.category_id || 0) || null,
+    payment_channel_ids: parsePaymentChannelIDs(product.payment_channel_ids),
     is_affiliate_enabled: Boolean(product.is_affiliate_enabled),
     is_active: product.is_active ?? true,
     sort_order: Number(product.sort_order || 0),
@@ -554,6 +589,7 @@ const handleSubmit = async () => {
       fulfillment_type: form.fulfillment_type,
       manual_stock_total: effectiveManualStockTotal,
       skus: normalizedSKUs,
+      payment_channel_ids: form.payment_channel_ids.length > 0 ? form.payment_channel_ids : [],
       is_affiliate_enabled: form.is_affiliate_enabled,
       is_active: form.is_active,
       sort_order: Number(form.sort_order) || 0,
@@ -584,39 +620,6 @@ const addTag = () => {
 
 const removeTag = (index: number) => {
   form.tags.splice(index, 1)
-}
-
-const triggerFileInput = () => fileInput.value?.click()
-
-const handleFileChange = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (file) uploadImage(file)
-}
-
-const handleDrop = (e: DragEvent) => {
-  const file = e.dataTransfer?.files[0]
-  if (file && file.type.startsWith('image/')) uploadImage(file)
-}
-
-const uploadImage = async (file: File) => {
-  uploading.value = true
-  const formData = new FormData()
-  formData.append('file', file)
-
-  try {
-    const res = await adminAPI.upload(formData, 'product')
-    const imageUrl = (res.data.data as Record<string, unknown>)?.url as string
-    if (form.images.length > 0) {
-      form.images[0] = imageUrl
-    } else {
-      form.images.push(imageUrl)
-    }
-  } catch (err) {
-    if (isNotifiedError(err)) return
-    notifyError(t('admin.products.errors.uploadFailed'))
-  } finally {
-    uploading.value = false
-  }
 }
 
 // Watch productId to determine create vs edit mode and fetch product details
@@ -653,6 +656,9 @@ watch(
   (newVal) => {
     if (!newVal) return
     currentLang.value = 'zh-CN'
+    if (paymentChannels.value.length === 0) {
+      loadPaymentChannels()
+    }
     if (props.productId != null && props.productId > 0) {
       isEditing.value = true
       adminAPI.getProduct(props.productId).then((res) => {
@@ -985,25 +991,7 @@ watch(
 
           <div class="col-span-1 md:col-span-2">
             <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.images') }}</label>
-            <div
-              class="border border-dashed border-border rounded-xl p-6 text-center cursor-pointer relative"
-              @click="triggerFileInput"
-              @drop.prevent="handleDrop"
-              @dragover.prevent
-            >
-              <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleFileChange" />
-              <div v-if="form.images.length > 0" class="space-y-2">
-                <img :src="getFirstImageUrl(form.images)" class="h-32 mx-auto rounded-lg object-cover" :alt="form.title[currentLang]" />
-                <div class="text-xs text-muted-foreground">{{ t('admin.products.form.imageReplaceTip') }}</div>
-                <div class="text-xs text-muted-foreground font-mono">{{ getFirstImageUrl(form.images) }}</div>
-              </div>
-              <div v-else class="text-muted-foreground">
-                <span class="text-sm">{{ t('admin.products.form.imageUploadHint') }}</span>
-              </div>
-              <div v-if="uploading" class="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
-                <div class="animate-spin h-8 w-8 border-b-2 border-white rounded-full"></div>
-              </div>
-            </div>
+            <MediaPicker v-model="form.images" :multiple="true" scene="product" />
           </div>
 
           <div class="col-span-1 md:col-span-2">
@@ -1029,6 +1017,17 @@ watch(
               <Input v-model="newTag" :placeholder="t('admin.products.form.tagsPlaceholder')" @keydown.enter.prevent="addTag" />
               <Button type="button" variant="outline" class="w-full sm:w-auto" @click="addTag">{{ t('admin.products.actions.addTag') }}</Button>
             </div>
+          </div>
+
+          <div v-if="paymentChannels.length > 0" class="col-span-1 md:col-span-2">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.paymentChannels') }}</label>
+            <div class="flex flex-wrap gap-2">
+              <label v-for="ch in paymentChannels" :key="ch.id" class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs cursor-pointer select-none" :class="form.payment_channel_ids.includes(ch.id) ? 'bg-primary/10 border-primary text-primary' : 'text-muted-foreground hover:border-primary/40'">
+                <input type="checkbox" :checked="form.payment_channel_ids.includes(ch.id)" class="h-3.5 w-3.5 accent-primary" @change="togglePaymentChannel(ch.id)" />
+                {{ ch.name }}
+              </label>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.paymentChannelsTip') }}</p>
           </div>
 
           <div class="col-span-1 md:col-span-2 flex flex-col items-start gap-4 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">

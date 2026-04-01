@@ -12,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { notifyError, notifySuccess } from '@/utils/notify'
 import { formatDate } from '@/utils/format'
-import { Loader2, Paperclip, Search, Send, Trash2, Users } from 'lucide-vue-next'
+import { Loader2, Paperclip, Search, Send, Trash2, Users, ImageIcon } from 'lucide-vue-next'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -109,8 +110,22 @@ const toggleUser = (userID: number, checked: boolean) => {
   selectedUserIds.value = Array.from(next)
 }
 
+const mediaPickerRef = ref<InstanceType<typeof MediaPicker> | null>(null)
+const mediaPickerValue = ref('')
+
 const openFilePicker = () => {
   fileInput.value?.click()
+}
+
+const handleMediaSelected = (value: string | string[]) => {
+  const path = Array.isArray(value) ? value[0] : value
+  if (path) {
+    form.attachment_url = path
+    // 从路径中提取文件名
+    const filename = path.split('/').pop() || ''
+    form.attachment_name = filename
+  }
+  mediaPickerValue.value = ''
 }
 
 const clearAttachment = () => {
@@ -267,6 +282,11 @@ onMounted(() => {
                 <Paperclip class="h-4 w-4 mr-2" />
                 {{ uploading ? t('admin.common.loading') : t('telegramBot.broadcasts.uploadAttachment') }}
               </Button>
+              <Button variant="outline" type="button" @click="mediaPickerRef?.openPicker()">
+                <ImageIcon class="h-4 w-4 mr-2" />
+                {{ t('admin.mediaPicker.selectFromLibrary') }}
+              </Button>
+              <MediaPicker ref="mediaPickerRef" :model-value="mediaPickerValue" scene="telegram" dialog-only @update:model-value="handleMediaSelected" />
               <span class="text-sm text-muted-foreground">{{ t('telegramBot.broadcasts.attachmentHint') }}</span>
             </div>
           </div>

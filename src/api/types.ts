@@ -62,6 +62,7 @@ export interface AdminProduct {
   manual_stock_total: number
   manual_stock_locked: number
   manual_stock_sold: number
+  payment_channel_ids: string
   is_affiliate_enabled: boolean
   auto_stock_available: number
   auto_stock_total: number
@@ -111,6 +112,7 @@ export interface AdminOrderItem {
   promotion_id?: number
   promotion_name?: string
   tags?: string[]
+  manual_form_schema_snapshot?: Record<string, unknown>
   manual_form_submission?: Record<string, unknown>
   coupon_discount_amount?: number
   promotion_discount_amount?: number
@@ -126,6 +128,7 @@ export interface AdminFulfillment {
   created_at: string
   updated_at: string
   payload?: string
+  payload_line_count?: number
   delivery_data?: Record<string, unknown>
 }
 
@@ -296,6 +299,20 @@ export interface AdminPromotion {
 }
 
 // --- Banner ---
+// --- Media ---
+export interface AdminMedia {
+  id: number
+  name: string
+  filename: string
+  path: string
+  mime_type: string
+  size: number
+  scene: string
+  width: number
+  height: number
+  created_at: string
+}
+
 export interface AdminBanner {
   id: number
   name: string
@@ -432,6 +449,7 @@ export interface AdminUser {
   total_recharged?: number | string
   total_spent?: number | string
   wallet_balance?: number | string
+  admin_note?: string
   email_verified_at?: string
   last_login_at?: string
   created_at: string
@@ -517,6 +535,7 @@ export interface AdminProcurementOrder {
   next_retry_at?: string
   trace_id: string
   upstream_payload?: string
+  upstream_payload_line_count?: number
   created_at: string
   updated_at: string
   connection_name?: string

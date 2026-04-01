@@ -108,6 +108,12 @@ const routes = [
         meta: { permission: 'GET:/admin/banners' },
       },
       {
+        path: 'media',
+        name: 'media',
+        component: () => import('@/views/admin/Media.vue'),
+        meta: { permission: 'GET:/admin/media' },
+      },
+      {
         path: 'coupons',
         name: 'coupons',
         component: () => import('@/views/admin/Coupons.vue'),
@@ -254,6 +260,12 @@ const routes = [
         path: 'telegram-bot/broadcasts/create',
         name: 'telegram-bot-broadcast-create',
         component: () => import('@/views/admin/TelegramBotBroadcastCreate.vue'),
+        meta: { permission: 'GET:/admin/telegram-bot/broadcasts' },
+      },
+      {
+        path: 'telegram-bot/broadcasts/:id',
+        name: 'telegram-bot-broadcast-detail',
+        component: () => import('@/views/admin/TelegramBotBroadcastDetail.vue'),
         meta: { permission: 'GET:/admin/telegram-bot/broadcasts' },
       },
     ],

@@ -495,6 +495,12 @@ watch(
           </div>
         </CardContent>
       </Card>
+      <Card class="rounded-lg border-border bg-background shadow-none md:col-span-3">
+        <CardContent class="p-3">
+          <div class="text-xs text-muted-foreground">{{ t('admin.userDetail.fields.adminNote') }}</div>
+          <div class="text-sm text-foreground whitespace-pre-wrap">{{ (user?.admin_note as string) || '-' }}</div>
+        </CardContent>
+      </Card>
     </div>
 
     <Card class="rounded-lg border-border bg-background shadow-none">

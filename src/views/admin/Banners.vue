@@ -12,6 +12,7 @@ import { Dialog, DialogHeader, DialogScrollContent, DialogTitle } from '@/compon
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { getImageUrl } from '@/utils/image'
 import { notifyError } from '@/utils/notify'
 import { confirmAction } from '@/utils/confirm'
@@ -20,13 +21,10 @@ import { useFormValidation, rules } from '@/composables/useFormValidation'
 const { t } = useI18n()
 const route = useRoute()
 const loading = ref(false)
-const uploading = ref(false)
 const submitting = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
 const currentLang = ref('zh-CN')
-const fileInput = ref<HTMLInputElement | null>(null)
-const mobileFileInput = ref<HTMLInputElement | null>(null)
 
 const languages = computed(() => [
   { code: 'zh-CN', name: t('admin.common.lang.zhCN') },
@@ -281,40 +279,6 @@ const handleDelete = async (banner: AdminBanner) => {
   }
 }
 
-const triggerFileInput = () => {
-  fileInput.value?.click()
-}
-
-const triggerMobileFileInput = () => {
-  mobileFileInput.value?.click()
-}
-
-const uploadBannerImage = async (file: File, target: 'image' | 'mobile_image') => {
-  uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await adminAPI.upload(formData, 'banner')
-    form[target] = (res.data.data as Record<string, string>)?.url || ''
-  } catch {
-    notifyError(t('admin.banners.errors.uploadFailed'))
-  } finally {
-    uploading.value = false
-  }
-}
-
-const handleFileChange = async (event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  await uploadBannerImage(file, 'image')
-}
-
-const handleMobileFileChange = async (event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  await uploadBannerImage(file, 'mobile_image')
-}
-
 const openEditById = async (rawId: unknown) => {
   const id = Number(rawId)
   if (!Number.isFinite(id) || id <= 0) return
@@ -375,17 +339,17 @@ watch(
     </div>
 
     <div class="rounded-xl border border-border bg-card overflow-x-auto">
-      <Table class="min-w-[1120px]">
+      <Table class="min-w-[900px]">
         <TableHeader class="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
           <TableRow>
             <TableHead class="px-6 py-3">{{ t('admin.banners.table.id') }}</TableHead>
-            <TableHead class="min-w-[160px] px-6 py-3">{{ t('admin.banners.table.image') }}</TableHead>
-            <TableHead class="min-w-[260px] px-6 py-3">{{ t('admin.banners.table.name') }}</TableHead>
-            <TableHead class="min-w-[160px] px-6 py-3">{{ t('admin.banners.table.position') }}</TableHead>
-            <TableHead class="min-w-[160px] px-6 py-3">{{ t('admin.banners.table.linkType') }}</TableHead>
+            <TableHead class="min-w-[90px] px-6 py-3">{{ t('admin.banners.table.image') }}</TableHead>
+            <TableHead class="min-w-[140px] px-6 py-3">{{ t('admin.banners.table.name') }}</TableHead>
+            <TableHead class="min-w-[90px] px-6 py-3">{{ t('admin.banners.table.position') }}</TableHead>
+            <TableHead class="min-w-[90px] px-6 py-3">{{ t('admin.banners.table.linkType') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.banners.table.sort') }}</TableHead>
-            <TableHead class="min-w-[120px] px-6 py-3">{{ t('admin.banners.table.status') }}</TableHead>
-            <TableHead class="min-w-[180px] px-6 py-3 text-right">{{ t('admin.banners.table.action') }}</TableHead>
+            <TableHead class="min-w-[90px] px-6 py-3">{{ t('admin.banners.table.status') }}</TableHead>
+            <TableHead class="min-w-[140px] px-6 py-3 text-right">{{ t('admin.banners.table.action') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="divide-y divide-border">
@@ -401,22 +365,22 @@ watch(
             <TableCell class="px-6 py-4">
               <IdCell :value="banner.id" />
             </TableCell>
-            <TableCell class="min-w-[160px] px-6 py-4">
+            <TableCell class="min-w-[90px] px-6 py-4">
               <img v-if="banner.image" :src="getImageUrl(banner.image)" class="h-14 w-28 shrink-0 rounded object-cover" />
             </TableCell>
-            <TableCell class="min-w-[260px] px-6 py-4">
+            <TableCell class="min-w-[140px] px-6 py-4">
               <div class="break-words font-medium text-foreground">{{ banner.name }}</div>
               <div class="break-words text-xs text-muted-foreground">{{ getLocalizedText(banner.title) }}</div>
             </TableCell>
-            <TableCell class="min-w-[160px] px-6 py-4 text-xs text-muted-foreground break-words">{{ getPositionLabel(banner.position) }}</TableCell>
-            <TableCell class="min-w-[160px] px-6 py-4 text-xs text-muted-foreground break-words">{{ getLinkTypeLabel(banner.link_type) }}</TableCell>
+            <TableCell class="min-w-[90px] px-6 py-4 text-xs text-muted-foreground break-words">{{ getPositionLabel(banner.position) }}</TableCell>
+            <TableCell class="min-w-[90px] px-6 py-4 text-xs text-muted-foreground break-words">{{ getLinkTypeLabel(banner.link_type) }}</TableCell>
             <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ banner.sort_order || 0 }}</TableCell>
-            <TableCell class="min-w-[120px] px-6 py-4">
+            <TableCell class="min-w-[90px] px-6 py-4">
               <span class="inline-flex rounded-full border px-2.5 py-1 text-xs" :class="banner.is_active ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-muted-foreground border-border bg-muted/30'">
                 {{ banner.is_active ? t('admin.common.enabled') : t('admin.common.disabled') }}
               </span>
             </TableCell>
-            <TableCell class="min-w-[180px] px-6 py-4 text-right">
+            <TableCell class="min-w-[140px] px-6 py-4 text-right">
               <div class="flex flex-wrap items-center justify-end gap-2">
                 <Button size="sm" variant="outline" @click="openEditModal(banner)">{{ t('admin.banners.actions.edit') }}</Button>
                 <Button size="sm" variant="destructive" @click="handleDelete(banner)">{{ t('admin.banners.actions.delete') }}</Button>
@@ -496,33 +460,13 @@ watch(
 
             <div class="md:col-span-2">
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('admin.banners.form.image') }}</label>
-              <div
-                class="cursor-pointer rounded-lg border border-dashed border-border p-4 text-center hover:border-primary"
-                @click="triggerFileInput"
-              >
-                <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleFileChange" />
-                <div v-if="form.image" class="space-y-2">
-                  <img :src="getImageUrl(form.image)" class="mx-auto h-36 rounded-lg object-cover" />
-                  <div class="text-xs text-muted-foreground">{{ uploading ? t('admin.common.loading') : t('admin.banners.form.imageReplaceTip') }}</div>
-                </div>
-                <div v-else class="text-sm text-muted-foreground">{{ t('admin.banners.form.imageUploadHint') }}</div>
-              </div>
+              <MediaPicker v-model="form.image" scene="banner" />
               <p v-if="errors.image" class="text-xs text-destructive mt-1">{{ errors.image }}</p>
             </div>
 
             <div class="md:col-span-2">
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('admin.banners.form.mobileImage') }}</label>
-              <div
-                class="cursor-pointer rounded-lg border border-dashed border-border p-4 text-center hover:border-primary"
-                @click="triggerMobileFileInput"
-              >
-                <input ref="mobileFileInput" type="file" class="hidden" accept="image/*" @change="handleMobileFileChange" />
-                <div v-if="form.mobile_image" class="space-y-2">
-                  <img :src="getImageUrl(form.mobile_image)" class="mx-auto h-36 rounded-lg object-cover" />
-                  <div class="text-xs text-muted-foreground">{{ uploading ? t('admin.common.loading') : t('admin.banners.form.imageReplaceTip') }}</div>
-                </div>
-                <div v-else class="text-sm text-muted-foreground">{{ t('admin.banners.form.imageUploadHint') }}</div>
-              </div>
+              <MediaPicker v-model="form.mobile_image" scene="banner" />
               <Input v-model="form.mobile_image" class="mt-2" :placeholder="t('admin.banners.form.mobileImagePlaceholder')" />
             </div>
 

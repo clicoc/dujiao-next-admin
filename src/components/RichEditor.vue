@@ -12,10 +12,9 @@ import { Table } from '@tiptap/extension-table'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableRow } from '@tiptap/extension-table-row'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { getImageUrl } from '@/utils/image'
 import { processHtmlForDisplay, processHtmlForStorage } from '@/utils/content'
-import { adminAPI } from '@/api/admin'
-import { notifyError } from '@/utils/notify'
 import { useI18n } from 'vue-i18n'
 import TiptapImage from './TiptapImage.vue'
 
@@ -29,8 +28,21 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const imageFileInput = ref<HTMLInputElement | null>(null)
-const isUploading = ref(false)
+const mediaPickerRef = ref<InstanceType<typeof MediaPicker> | null>(null)
+const mediaPickerValue = ref('')
+
+const openMediaPicker = () => {
+  mediaPickerRef.value?.openPicker()
+}
+
+const handleMediaSelected = (value: string | string[]) => {
+  const path = Array.isArray(value) ? value[0] : value
+  if (path && editor.value) {
+    const imageFullUrl = getImageUrl(path)
+    editor.value.chain().focus().setImage({ src: imageFullUrl }).run()
+  }
+  mediaPickerValue.value = ''
+}
 const { t } = useI18n()
 const showColorPicker = ref(false)
 const currentColor = ref('#0f766e')
@@ -156,10 +168,6 @@ const addLink = () => {
   }
 }
 
-const triggerImageUpload = () => {
-  imageFileInput.value?.click()
-}
-
 const setColor = (color: string) => {
   if (editor.value) {
     editor.value.chain().focus().setColor(color).run()
@@ -184,41 +192,6 @@ watch(
     }
   }
 )
-
-const handleImageUpload = async (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-
-  if (!file) return
-
-  if (!file.type.startsWith('image/')) {
-    notifyError(t('admin.richEditor.selectImageFile'))
-    return
-  }
-
-  isUploading.value = true
-
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-		const response = await adminAPI.upload(formData, 'editor')
-    const result = response.data
-    const imageRelativePath = (result.data as any)?.url
-
-    if (imageRelativePath && editor.value) {
-      const imageFullUrl = getImageUrl(imageRelativePath)
-      editor.value.chain().focus().setImage({ src: imageFullUrl }).run()
-    } else {
-      throw new Error(t('admin.richEditor.imageUrlMissing'))
-    }
-  } catch (error) {
-    notifyError((error as Error)?.message || t('admin.common.uploadFailed'))
-  } finally {
-    isUploading.value = false
-    if (target) target.value = ''
-  }
-}
 
 onBeforeUnmount(() => {
   editor.value?.destroy()
@@ -287,12 +260,12 @@ onBeforeUnmount(() => {
         </svg>
       </button>
 
-      <button type="button" class="toolbar-btn" :title="t('admin.richEditor.uploadImage')" @click="triggerImageUpload">
+      <button type="button" class="toolbar-btn" :title="t('admin.richEditor.uploadImage')" @click="openMediaPicker">
         <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
           <path fill-rule="evenodd" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" clip-rule="evenodd" />
         </svg>
       </button>
-      <input ref="imageFileInput" type="file" class="hidden" accept="image/*" @change="handleImageUpload" />
+      <MediaPicker ref="mediaPickerRef" :model-value="mediaPickerValue" scene="editor" dialog-only @update:model-value="handleMediaSelected" />
 
       <div class="relative color-picker-container">
         <button type="button" class="toolbar-btn" :title="t('admin.richEditor.textColor')" @click="showColorPicker = !showColorPicker">
@@ -410,11 +383,11 @@ onBeforeUnmount(() => {
 @reference "../style.css";
 
 .rich-editor {
-  @apply border border-border rounded-xl overflow-hidden bg-background;
+  @apply border border-border rounded-xl bg-background;
 }
 
 .editor-toolbar {
-  @apply flex flex-nowrap items-center gap-1 overflow-x-auto p-1.5 border-b border-border bg-muted/40 sm:flex-wrap sm:p-2;
+  @apply flex flex-nowrap items-center gap-1 overflow-x-auto overflow-y-visible p-1.5 border-b border-border bg-muted/40 sm:flex-wrap sm:overflow-visible sm:p-2;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }
@@ -441,7 +414,7 @@ onBeforeUnmount(() => {
 }
 
 :deep(.editor-content) {
-  @apply text-foreground;
+  @apply text-foreground overflow-hidden;
 }
 
 :deep(.ProseMirror) {

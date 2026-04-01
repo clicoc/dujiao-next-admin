@@ -9,6 +9,7 @@ import { userStatusClass, userStatusLabel } from '@/utils/status'
 import { formatDate, formatMoney, getLocalizedText } from '@/utils/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -49,6 +50,7 @@ const form = reactive({
   password: '',
   locale: 'zh-CN',
   status: 'active',
+  admin_note: '',
 })
 
 const { errors: formErrors, validate, clearErrors } = useFormValidation({
@@ -183,6 +185,7 @@ const openEditModal = (user: AdminUser) => {
   form.password = ''
   form.locale = user.locale || 'zh-CN'
   form.status = user.status || 'active'
+  form.admin_note = (user.admin_note as string) || ''
   error.value = ''
   clearErrors()
   showModal.value = true
@@ -206,6 +209,7 @@ const handleSubmit = async () => {
       password: form.password || undefined,
       locale: form.locale,
       status: form.status,
+      admin_note: form.admin_note,
     })
     closeModal()
     fetchUsers(pagination.value.page)
@@ -304,32 +308,33 @@ onMounted(() => {
     </div>
 
     <div class="rounded-xl border border-border bg-card overflow-x-auto">
-      <Table class="min-w-[1320px]">
+      <Table class="min-w-[1020px]">
         <TableHeader class="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
           <TableRow>
             <TableHead class="px-6 py-3">
               <input type="checkbox" :checked="allSelected" class="h-4 w-4 accent-primary" @change="toggleSelectAll" />
             </TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.id') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[260px]">{{ t('admin.users.table.email') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[220px]">{{ t('admin.users.table.nickname') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[140px]">{{ t('admin.users.table.email') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[160px]">{{ t('admin.users.table.nickname') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.status') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.locale') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.walletBalance') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[180px]">{{ t('admin.users.table.memberLevel') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[140px]">{{ t('admin.users.table.memberLevel') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.createdAt') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.users.table.lastLoginAt') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[180px] text-right">{{ t('admin.users.table.action') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[120px]">{{ t('admin.users.table.adminNote') }}</TableHead>
+            <TableHead class="px-6 py-3 min-w-[140px] text-right">{{ t('admin.users.table.action') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="divide-y divide-border">
           <TableRow v-if="loading">
-            <TableCell :colspan="11" class="p-0">
+            <TableCell :colspan="12" class="p-0">
               <TableSkeleton :columns="10" :rows="5" />
             </TableCell>
           </TableRow>
           <TableRow v-else-if="users.length === 0">
-            <TableCell colspan="11" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.users.empty') }}</TableCell>
+            <TableCell colspan="12" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.users.empty') }}</TableCell>
           </TableRow>
           <TableRow v-for="user in users" :key="user.id" class="hover:bg-muted/30">
             <TableCell class="px-6 py-4">
@@ -338,8 +343,8 @@ onMounted(() => {
             <TableCell class="px-6 py-4">
               <IdCell :value="user.id" />
             </TableCell>
-            <TableCell class="min-w-[260px] px-6 py-4 text-foreground break-all">{{ user.email }}</TableCell>
-            <TableCell class="min-w-[220px] px-6 py-4 text-muted-foreground break-words">{{ user.display_name || '-' }}</TableCell>
+            <TableCell class="min-w-[140px] px-6 py-4 text-foreground break-all">{{ user.email }}</TableCell>
+            <TableCell class="min-w-[160px] px-6 py-4 text-muted-foreground break-words">{{ user.display_name || '-' }}</TableCell>
             <TableCell class="px-6 py-4 text-xs">
               <span class="inline-flex rounded-full border px-2.5 py-1 text-xs" :class="statusClass(user.status)">
                 {{ statusLabel(user.status) }}
@@ -347,10 +352,11 @@ onMounted(() => {
             </TableCell>
             <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ formatLocale(user.locale) }}</TableCell>
             <TableCell class="px-6 py-4 text-xs font-mono text-foreground">{{ formatMoney(user.wallet_balance, siteCurrency) }}</TableCell>
-            <TableCell class="min-w-[180px] px-6 py-4 text-xs text-foreground break-words">{{ getMemberLevelLabel(user) }}</TableCell>
+            <TableCell class="min-w-[140px] px-6 py-4 text-xs text-foreground break-words">{{ getMemberLevelLabel(user) }}</TableCell>
             <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ formatDate(user.created_at) }}</TableCell>
             <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ formatDate(user.last_login_at) }}</TableCell>
-            <TableCell class="min-w-[180px] px-6 py-4 text-right">
+            <TableCell class="min-w-[120px] px-6 py-4 text-xs text-muted-foreground truncate max-w-[200px]" :title="(user.admin_note as string) || ''">{{ (user.admin_note as string) || '-' }}</TableCell>
+            <TableCell class="min-w-[140px] px-6 py-4 text-right">
               <div class="flex flex-wrap items-center justify-end gap-2">
                 <Button as-child size="sm" variant="outline">
                   <router-link :to="userDetailLink(user.id)">{{ t('admin.users.actions.detail') }}</router-link>
@@ -469,6 +475,10 @@ onMounted(() => {
                   <SelectItem value="disabled">{{ t('admin.users.status.disabled') }}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.users.form.adminNote') }}</label>
+              <Textarea v-model="form.admin_note" :placeholder="t('admin.users.form.adminNotePlaceholder')" rows="3" />
             </div>
           </div>
 

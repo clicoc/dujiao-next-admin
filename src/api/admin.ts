@@ -14,6 +14,7 @@ import type {
   AdminPromotion,
   AdminBanner,
   AdminPost,
+  AdminMedia,
   AdminPaymentChannel,
   AdminPayment,
   AdminUser,
@@ -272,6 +273,11 @@ export const adminAPI = {
       },
     })
   },
+  // 素材管理
+  getMedia: (params?: Record<string, unknown>) => api.get<ApiResponse<AdminMedia[]>>('/admin/media', { params }),
+  updateMedia: (id: number, data: { name: string }) => api.put<ApiResponse>(`/admin/media/${id}`, data),
+  deleteMedia: (id: number) => api.delete<ApiResponse>(`/admin/media/${id}`),
+
   getProducts: (params?: Record<string, unknown>) => api.get<ApiResponse<AdminProduct[]>>('/admin/products', { params }),
   getProduct: (id: number) => api.get<ApiResponse<AdminProduct>>(`/admin/products/${id}`),
   createProduct: (data: Partial<AdminProduct>) => api.post<ApiResponse<AdminProduct>>('/admin/products', data),
@@ -321,6 +327,7 @@ export const adminAPI = {
   getOrder: (id: number) => api.get<ApiResponse<AdminOrder>>(`/admin/orders/${id}`),
   updateOrderStatus: (id: number, data: { status: string }) => api.patch<ApiResponse<AdminOrder>>(`/admin/orders/${id}`, data),
   createFulfillment: (data: Partial<AdminFulfillment>) => api.post<ApiResponse<AdminFulfillment>>('/admin/fulfillments', data),
+  downloadFulfillment: (orderId: number) => api.get(`/admin/orders/${orderId}/fulfillment/download`, { responseType: 'blob' }),
   getPayments: (params?: Record<string, unknown>) => api.get<ApiResponse<AdminPayment[]>>('/admin/payments', { params }),
   getPayment: (id: number) => api.get<ApiResponse<AdminPayment>>(`/admin/payments/${id}`),
   exportPayments: (params?: Record<string, unknown>) => api.get('/admin/payments/export', { params, responseType: 'blob' }),
@@ -420,6 +427,7 @@ export const adminAPI = {
   // Procurement Orders
   getProcurementOrders: (params?: Record<string, unknown>) => api.get<ApiResponse<AdminProcurementOrder[]>>('/admin/procurement-orders', { params }),
   getProcurementOrder: (id: number) => api.get<ApiResponse<AdminProcurementOrder>>(`/admin/procurement-orders/${id}`),
+  downloadProcurementUpstreamPayload: (id: number) => api.get(`/admin/procurement-orders/${id}/upstream-payload/download`, { responseType: 'blob' }),
   retryProcurementOrder: (id: number) => api.post<ApiResponse>(`/admin/procurement-orders/${id}/retry`),
   cancelProcurementOrder: (id: number) => api.post<ApiResponse>(`/admin/procurement-orders/${id}/cancel`),
 
@@ -452,6 +460,8 @@ export const adminAPI = {
   getTelegramBotRuntimeStatus: () => api.get<ApiResponse<AdminTelegramBotRuntimeStatus>>('/admin/settings/telegram-bot/runtime-status'),
   getTelegramBroadcasts: (params?: Record<string, unknown>) =>
     api.get<ApiResponse<AdminTelegramBroadcast[]>>('/admin/telegram-bot/broadcasts', { params }),
+  getTelegramBroadcast: (id: number) =>
+    api.get<ApiResponse<AdminTelegramBroadcast>>(`/admin/telegram-bot/broadcasts/${id}`),
   createTelegramBroadcast: (data: {
     title: string
     recipient_type: string

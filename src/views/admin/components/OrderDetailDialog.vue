@@ -157,14 +157,64 @@ const formatManualValue = (value: unknown) => {
   return String(value)
 }
 
-const manualSubmissionRows = (submission: Record<string, unknown> | null | undefined) => {
+type ManualFormSnapshotField = {
+  key: string
+  label?: Record<string, unknown> | string
+}
+
+const normalizeManualSnapshotFields = (schemaSnapshot: Record<string, unknown> | null | undefined): ManualFormSnapshotField[] => {
+  if (!schemaSnapshot || typeof schemaSnapshot !== 'object') return []
+  const rawFields = Array.isArray(schemaSnapshot.fields) ? schemaSnapshot.fields : []
+  return rawFields
+    .map((field) => {
+      if (!field || typeof field !== 'object') return null
+      const key = String((field as Record<string, unknown>).key || '').trim()
+      if (!key) return null
+      return {
+        key,
+        label: (field as Record<string, unknown>).label as Record<string, unknown> | string | undefined,
+      } satisfies ManualFormSnapshotField
+    })
+    .filter(Boolean) as ManualFormSnapshotField[]
+}
+
+const resolveManualFieldLabel = (field: ManualFormSnapshotField) => {
+  const localized = getLocalizedText(field.label)
+  if (localized) return String(localized)
+  return field.key
+}
+
+const manualSubmissionRows = (
+  submission: Record<string, unknown> | null | undefined,
+  schemaSnapshot?: Record<string, unknown> | null
+) => {
   if (!submission || typeof submission !== 'object') return []
-  return Object.entries(submission)
-    .filter(([key]) => String(key).trim() !== '')
-    .map(([key, value]) => ({
-      key: String(key),
+
+  const entries = Object.entries(submission).filter(([key]) => String(key).trim() !== '')
+  if (entries.length === 0) return []
+
+  const valueMap = new Map(entries.map(([key, value]) => [String(key), value] as const))
+  const rows: Array<{ key: string; label: string; value: string }> = []
+
+  normalizeManualSnapshotFields(schemaSnapshot).forEach((field) => {
+    if (!valueMap.has(field.key)) return
+    rows.push({
+      key: field.key,
+      label: resolveManualFieldLabel(field),
+      value: formatManualValue(valueMap.get(field.key)),
+    })
+    valueMap.delete(field.key)
+  })
+
+  valueMap.forEach((value, key) => {
+    rows.push({
+      key,
+      label: key,
       value: formatManualValue(value),
-    }))
+    })
+  })
+
+  return rows
 }
 
 const parseOrderItemSkuId = (item: AdminOrderItem & Record<string, unknown>) => {
@@ -223,6 +273,29 @@ const fulfillmentDeliveryLines = (fulfillment: AdminFulfillment & Record<string,
     })
   }
   return lines
+}
+
+const fulfillmentDownloading = ref(false)
+
+const isFulfillmentTruncated = (fulfillment: any) => {
+  return fulfillment?.payload_line_count > 100
+}
+
+const handleDownloadFulfillment = async (orderId: number, orderNo: string) => {
+  if (fulfillmentDownloading.value) return
+  fulfillmentDownloading.value = true
+  try {
+    const res = await adminAPI.downloadFulfillment(orderId)
+    const blob = new Blob([res.data], { type: 'text/plain; charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fulfillment-${orderNo}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {} finally {
+    fulfillmentDownloading.value = false
+  }
 }
 
 const parseMoneyValue = (value?: string | number) => {
@@ -564,11 +637,11 @@ watch(
                         {{ tag }}
                       </span>
                     </div>
-                    <div v-if="manualSubmissionRows(item.manual_form_submission).length" class="mt-3 rounded-lg border border-border bg-background p-3">
+                    <div v-if="manualSubmissionRows(item.manual_form_submission, item.manual_form_schema_snapshot).length" class="mt-3 rounded-lg border border-border bg-background p-3">
                       <div class="text-xs font-semibold text-muted-foreground mb-2">{{ t('admin.orders.manualSubmissionTitle') }}</div>
                       <div class="space-y-1 text-xs text-muted-foreground">
-                        <div v-for="row in manualSubmissionRows(item.manual_form_submission)" :key="`${item.id}-${row.key}`" class="break-words">
-                          <span class="text-foreground">{{ row.key }}</span>：<span class="break-all">{{ row.value }}</span>
+                        <div v-for="row in manualSubmissionRows(item.manual_form_submission, item.manual_form_schema_snapshot)" :key="`${item.id}-${row.key}`" class="break-words">
+                          <span class="text-foreground">{{ row.label }}</span>：<span class="break-all">{{ row.value }}</span>
                         </div>
                       </div>
                     </div>
@@ -639,11 +712,11 @@ watch(
                           </div>
                           <div class="mt-1 break-words text-xs text-muted-foreground">{{ t('admin.orders.itemSkuSpec') }}：{{ orderItemSkuSpecText(item) }}</div>
                         </div>
-                        <div v-if="manualSubmissionRows(item.manual_form_submission).length" class="mt-3 rounded-lg border border-border bg-muted/20 p-3">
+                        <div v-if="manualSubmissionRows(item.manual_form_submission, item.manual_form_schema_snapshot).length" class="mt-3 rounded-lg border border-border bg-muted/20 p-3">
                           <div class="text-xs font-semibold text-muted-foreground mb-2">{{ t('admin.orders.manualSubmissionTitle') }}</div>
                           <div class="space-y-1 text-xs text-muted-foreground">
-                            <div v-for="row in manualSubmissionRows(item.manual_form_submission)" :key="`${item.id}-${row.key}`" class="break-words">
-                              <span class="text-foreground">{{ row.key }}</span>：<span class="break-all">{{ row.value }}</span>
+                            <div v-for="row in manualSubmissionRows(item.manual_form_submission, item.manual_form_schema_snapshot)" :key="`${item.id}-${row.key}`" class="break-words">
+                              <span class="text-foreground">{{ row.label }}</span>：<span class="break-all">{{ row.value }}</span>
                             </div>
                           </div>
                         </div>
@@ -674,7 +747,19 @@ watch(
                   <div v-if="child.fulfillment">
                     <div class="text-xs text-muted-foreground">{{ t('admin.orders.detailFulfillmentType') }}：{{ fulfillmentTypeLabel(child.fulfillment.type) }}</div>
                     <div class="text-xs text-muted-foreground">{{ t('admin.orders.detailFulfillmentStatus') }}：{{ fulfillmentStatusLabel(child.fulfillment.status) }}</div>
-                    <div v-if="fulfillmentDeliveryLines(child.fulfillment).length" class="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs text-foreground space-y-1">
+                    <div v-if="isFulfillmentTruncated(child.fulfillment)" class="mt-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-muted-foreground">{{ t('admin.orders.fulfillmentTotalLines', { count: child.fulfillment.payload_line_count }) }}</span>
+                        <Button size="xs" variant="outline" :disabled="fulfillmentDownloading" @click="handleDownloadFulfillment(child.id, child.order_no || selectedOrder?.order_no || '')">
+                          {{ fulfillmentDownloading ? t('admin.orders.fulfillmentDownloading') : t('admin.orders.fulfillmentDownload') }}
+                        </Button>
+                      </div>
+                      <div class="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                        {{ t('admin.orders.fulfillmentTruncatedHint') }}
+                      </div>
+                      <div class="rounded-lg border border-border bg-muted/30 p-3 text-xs text-foreground whitespace-pre-wrap break-all max-h-48 overflow-y-auto">{{ child.fulfillment.payload }}</div>
+                    </div>
+                    <div v-else-if="fulfillmentDeliveryLines(child.fulfillment).length" class="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs text-foreground space-y-1">
                       <div v-for="(line, lineIndex) in fulfillmentDeliveryLines(child.fulfillment)" :key="`child-fulfillment-${child.id}-${lineIndex}`" class="break-all">{{ line }}</div>
                     </div>
                     <div v-else-if="child.fulfillment.payload" class="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs text-foreground whitespace-pre-wrap break-all">
@@ -688,10 +773,22 @@ watch(
           </div>
 
           <div v-if="selectedOrder.fulfillment" class="rounded-xl border border-border bg-muted/20 p-4">
-            <h3 class="text-sm font-semibold text-foreground mb-3">{{ t('admin.orders.detailFulfillmentTitle') }}</h3>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-foreground">{{ t('admin.orders.detailFulfillmentTitle') }}</h3>
+              <Button v-if="isFulfillmentTruncated(selectedOrder.fulfillment)" size="xs" variant="outline" :disabled="fulfillmentDownloading" @click="handleDownloadFulfillment(selectedOrder.id, selectedOrder.order_no)">
+                {{ fulfillmentDownloading ? t('admin.orders.fulfillmentDownloading') : t('admin.orders.fulfillmentDownload') }}
+              </Button>
+            </div>
             <div class="text-sm text-muted-foreground">{{ t('admin.orders.detailFulfillmentType') }}：{{ fulfillmentTypeLabel(selectedOrder.fulfillment.type) }}</div>
             <div class="text-sm text-muted-foreground">{{ t('admin.orders.detailFulfillmentStatus') }}：{{ fulfillmentStatusLabel(selectedOrder.fulfillment.status) }}</div>
-            <div v-if="fulfillmentDeliveryLines(selectedOrder.fulfillment).length" class="mt-3 rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground space-y-1">
+            <div v-if="isFulfillmentTruncated(selectedOrder.fulfillment)" class="mt-3">
+              <div class="text-xs text-muted-foreground mb-2">{{ t('admin.orders.fulfillmentTotalLines', { count: selectedOrder.fulfillment.payload_line_count }) }}</div>
+              <div class="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                {{ t('admin.orders.fulfillmentTruncatedHint') }}
+              </div>
+              <div class="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{{ selectedOrder.fulfillment.payload }}</div>
+            </div>
+            <div v-else-if="fulfillmentDeliveryLines(selectedOrder.fulfillment).length" class="mt-3 rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground space-y-1">
               <div v-for="(line, lineIndex) in fulfillmentDeliveryLines(selectedOrder.fulfillment)" :key="`fulfillment-${selectedOrder.id}-${lineIndex}`" class="break-all">{{ line }}</div>
             </div>
             <div v-else class="mt-3 rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground whitespace-pre-wrap break-all">

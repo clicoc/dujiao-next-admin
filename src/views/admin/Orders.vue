@@ -6,11 +6,13 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { AdminOrder, AdminOrderItem } from '@/api/types'
 import IdCell from '@/components/IdCell.vue'
+import { Copy } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import { copyText } from '@/utils/clipboard'
 import {
   orderStatusClass,
   orderStatusLabel,
@@ -36,7 +38,14 @@ const filters = reactive({
   status: '',
   userId: '',
   userKeyword: '',
+  productKeyword: '',
+  sortBy: '',
+  sortOrder: '',
 })
+
+const handleCopyOrderNo = async (orderNo: string) => {
+  try { await copyText(orderNo) } catch {}
+}
 const statusEdits = reactive<Record<number, string>>({})
 const showDetail = ref(false)
 const showFulfillmentModal = ref(false)
@@ -48,6 +57,16 @@ const adminPath = import.meta.env.VITE_ADMIN_PATH || ''
 const userDetailLink = (userId: number) => `${adminPath}/users/${userId}`
 
 const normalizeFilterValue = (value: string) => (value === '__all__' ? '' : value)
+
+const parseSortValue = (value: string) => {
+  if (!value) return {}
+  const lastUnderscore = value.lastIndexOf('_')
+  if (lastUnderscore <= 0) return {}
+  const order = value.slice(lastUnderscore + 1)
+  if (order !== 'asc' && order !== 'desc') return {}
+  const field = value.slice(0, lastUnderscore)
+  return { sort_by: field, sort_order: order }
+}
 
 const toQueryText = (value: unknown) => {
   if (Array.isArray(value)) return String(value[0] || '').trim()
@@ -66,8 +85,10 @@ const fetchOrders = async (page = 1) => {
       user_keyword: filters.userKeyword || undefined,
       order_no: filters.orderNo || undefined,
       guest_email: filters.guestEmail || undefined,
+      product_keyword: filters.productKeyword || undefined,
       created_from: toRFC3339(filters.createdFrom),
       created_to: toRFC3339(filters.createdTo),
+      ...parseSortValue(normalizeFilterValue(filters.sortBy)),
     })
     orders.value = response.data.data || []
     pagination.value = response.data.pagination || pagination.value
@@ -76,6 +97,7 @@ const fetchOrders = async (page = 1) => {
     })
   } catch (error) {
     orders.value = []
+    pagination.value = { page: 1, page_size: pagination.value.page_size, total: 0, total_page: 0 }
   } finally {
     loading.value = false
   }
@@ -240,6 +262,9 @@ watch(
         <div class="w-full md:w-48">
           <Input v-model="filters.guestEmail" :placeholder="t('admin.orders.filterGuestEmail')" @update:modelValue="debouncedSearch" />
         </div>
+        <div class="w-full md:w-48">
+          <Input v-model="filters.productKeyword" :placeholder="t('admin.orders.filterProductKeyword')" @update:modelValue="debouncedSearch" />
+        </div>
         <div class="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center">
           <span class="text-xs text-muted-foreground whitespace-nowrap">{{ t('admin.orders.filterCreatedRange') }}</span>
           <Input
@@ -275,43 +300,65 @@ watch(
             </SelectContent>
           </Select>
         </div>
+        <div class="w-full md:w-48">
+          <Select v-model="filters.sortBy" @update:modelValue="handleSearch">
+            <SelectTrigger class="h-9 w-full">
+              <SelectValue :placeholder="t('admin.orders.sortDefault')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">{{ t('admin.orders.sortDefault') }}</SelectItem>
+              <SelectItem value="created_at_desc">{{ t('admin.orders.sortCreatedDesc') }}</SelectItem>
+              <SelectItem value="created_at_asc">{{ t('admin.orders.sortCreatedAsc') }}</SelectItem>
+              <SelectItem value="updated_at_desc">{{ t('admin.orders.sortUpdatedDesc') }}</SelectItem>
+              <SelectItem value="updated_at_asc">{{ t('admin.orders.sortUpdatedAsc') }}</SelectItem>
+              <SelectItem value="total_amount_desc">{{ t('admin.orders.sortAmountDesc') }}</SelectItem>
+              <SelectItem value="total_amount_asc">{{ t('admin.orders.sortAmountAsc') }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div class="hidden flex-1 sm:block"></div>
         <Button size="sm" class="w-full sm:w-auto" @click="refresh">{{ t('admin.common.refresh') }}</Button>
       </div>
     </div>
 
-    <div class="rounded-xl border border-border bg-card overflow-x-auto">
-      <Table class="min-w-[1420px]">
+    <div class="rounded-xl border border-border bg-card overflow-x-auto relative">
+      <Table class="min-w-[880px]">
         <TableHeader class="bg-muted/40 text-xs uppercase text-muted-foreground">
           <TableRow>
-            <TableHead class="px-6 py-3">{{ t('admin.orders.table.id') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[220px]">{{ t('admin.orders.table.orderNo') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[240px]">{{ t('admin.orders.table.items') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[260px]">{{ t('admin.orders.table.user') }}</TableHead>
-            <TableHead class="px-6 py-3">{{ t('admin.orders.table.ip') }}</TableHead>
-            <TableHead class="px-6 py-3">{{ t('admin.orders.table.amount') }}</TableHead>
-            <TableHead class="px-6 py-3">{{ t('admin.orders.table.status') }}</TableHead>
-            <TableHead class="px-6 py-3">{{ t('admin.orders.table.createdAt') }}</TableHead>
-            <TableHead class="px-6 py-3 min-w-[260px] text-right">{{ t('admin.orders.table.action') }}</TableHead>
+            <TableHead class="px-4 py-3">{{ t('admin.orders.table.id') }}</TableHead>
+            <TableHead class="px-4 py-3 min-w-[140px]">{{ t('admin.orders.table.orderNo') }}</TableHead>
+            <TableHead class="px-4 py-3 min-w-[140px]">{{ t('admin.orders.table.items') }}</TableHead>
+            <TableHead class="px-4 py-3 min-w-[140px]">{{ t('admin.orders.table.user') }}</TableHead>
+            <TableHead class="px-4 py-3 hidden xl:table-cell">{{ t('admin.orders.table.ip') }}</TableHead>
+            <TableHead class="px-4 py-3">{{ t('admin.orders.table.amount') }}</TableHead>
+            <TableHead class="px-4 py-3">{{ t('admin.orders.table.status') }}</TableHead>
+            <TableHead class="px-4 py-3">{{ t('admin.orders.table.createdAt') }}</TableHead>
+            <TableHead class="px-4 py-3">{{ t('admin.orders.table.updatedAt') }}</TableHead>
+            <TableHead class="px-4 py-3 min-w-[140px] text-right sticky right-0 bg-muted/40 z-10">{{ t('admin.orders.table.action') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="divide-y divide-border">
           <TableRow v-if="loading">
-            <TableCell :colspan="9" class="p-0">
-              <TableSkeleton :columns="9" :rows="5" />
+            <TableCell :colspan="10" class="p-0">
+              <TableSkeleton :columns="10" :rows="5" />
             </TableCell>
           </TableRow>
           <TableRow v-else-if="orders.length === 0">
-            <TableCell colspan="9" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.orders.empty') }}</TableCell>
+            <TableCell colspan="10" class="px-4 py-8 text-center text-muted-foreground">{{ t('admin.orders.empty') }}</TableCell>
           </TableRow>
           <TableRow v-for="order in orders" :key="order.id" class="hover:bg-muted/30">
-            <TableCell class="px-6 py-4">
+            <TableCell class="px-4 py-3">
               <IdCell :value="order.id" />
             </TableCell>
-            <TableCell class="min-w-[220px] px-6 py-4">
-              <div class="break-all font-medium text-foreground">{{ order.order_no }}</div>
+            <TableCell class="min-w-[140px] px-4 py-3">
+              <div class="flex items-center gap-1.5">
+                <span class="break-all font-medium text-foreground text-xs">{{ order.order_no }}</span>
+                <button type="button" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground hover:border-border" :title="t('admin.common.copy')" @click="handleCopyOrderNo(order.order_no)">
+                  <Copy class="h-3 w-3" />
+                </button>
+              </div>
             </TableCell>
-            <TableCell class="min-w-[240px] px-6 py-4">
+            <TableCell class="min-w-[140px] px-4 py-3">
               <div v-if="order.items && order.items.length > 0" class="space-y-1">
                 <div v-for="item in order.items" :key="item.id" class="text-xs">
                   <span class="text-foreground">{{ getLocalizedText(item.product_title) || getLocalizedText(item.title) || '-' }}</span>
@@ -323,12 +370,11 @@ watch(
               </div>
               <span v-else class="text-xs text-muted-foreground">-</span>
             </TableCell>
-            <TableCell class="min-w-[260px] px-6 py-4 text-xs text-muted-foreground">
+            <TableCell class="min-w-[140px] px-4 py-3 text-xs text-muted-foreground">
               <div v-if="order.user_id">
                 <div class="break-words text-foreground">{{ order.user_display_name || '-' }}</div>
                 <div class="break-all text-muted-foreground">{{ order.user_email || '-' }}</div>
-                <div class="mt-1">
-                  {{ t('admin.orders.userLabel') }}:
+                <div class="mt-0.5">
                   <a :href="userDetailLink(order.user_id)" target="_blank" rel="noopener" class="text-primary underline-offset-4 hover:underline">
                     #{{ order.user_id }}
                   </a>
@@ -336,18 +382,19 @@ watch(
               </div>
               <div v-else class="break-all">{{ t('admin.orders.guestLabel') }}: {{ order.guest_email || '-' }}</div>
             </TableCell>
-            <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ order.client_ip || '-' }}</TableCell>
-            <TableCell class="px-6 py-4 font-mono text-foreground">{{ formatMoney(order.total_amount, order.currency) }}</TableCell>
-            <TableCell class="px-6 py-4">
-              <span class="inline-flex rounded-full border px-2.5 py-1 text-xs" :class="statusClass(order.status)">
+            <TableCell class="px-4 py-3 text-xs text-muted-foreground hidden xl:table-cell">{{ order.client_ip || '-' }}</TableCell>
+            <TableCell class="px-4 py-3 font-mono text-xs text-foreground">{{ formatMoney(order.total_amount, order.currency) }}</TableCell>
+            <TableCell class="px-4 py-3">
+              <span class="inline-flex rounded-full border px-2 py-0.5 text-xs" :class="statusClass(order.status)">
                 {{ statusLabel(order.status) }}
               </span>
             </TableCell>
-            <TableCell class="px-6 py-4 text-xs text-muted-foreground">{{ formatDate(order.created_at) }}</TableCell>
-            <TableCell class="min-w-[260px] px-6 py-4">
-              <div class="flex flex-wrap items-center justify-end gap-2">
+            <TableCell class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{{ formatDate(order.created_at) }}</TableCell>
+            <TableCell class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{{ formatDate(order.updated_at) }}</TableCell>
+            <TableCell class="min-w-[140px] px-4 py-3 sticky right-0 bg-card z-10">
+              <div class="flex flex-wrap items-center justify-end gap-1.5">
                 <Select v-if="canUpdateStatus(order)" v-model="statusEdits[order.id]">
-                  <SelectTrigger class="h-8 w-[150px] text-xs">
+                  <SelectTrigger class="h-7 w-[130px] text-xs">
                     <SelectValue :placeholder="t('admin.orders.filterStatusAll')" />
                   </SelectTrigger>
                   <SelectContent>
@@ -359,16 +406,16 @@ watch(
                     <SelectItem value="canceled">{{ t('order.status.canceled') }}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button v-if="canUpdateStatus(order)" size="sm" variant="outline" @click="updateStatus(order)">
+                <Button v-if="canUpdateStatus(order)" size="xs" variant="outline" @click="updateStatus(order)">
                   {{ t('admin.orders.update') }}
                 </Button>
-                <Button v-if="canCreateFulfillment(order)" size="sm" variant="secondary" @click="openFulfillment(order)">
+                <Button v-if="canCreateFulfillment(order)" size="xs" variant="secondary" @click="openFulfillment(order)">
                   {{ t('admin.orders.fulfillmentCreate') }}
                 </Button>
-                <Button v-if="order.status === 'delivered'" size="sm" variant="outline" @click="markCompleted(order)">
+                <Button v-if="order.status === 'delivered'" size="xs" variant="outline" @click="markCompleted(order)">
                   {{ t('admin.orders.markCompleted') }}
                 </Button>
-                <Button size="sm" variant="outline" @click="openDetail(order)">
+                <Button size="xs" variant="outline" @click="openDetail(order)">
                   {{ t('admin.orders.view') }}
                 </Button>
               </div>

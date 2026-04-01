@@ -8,21 +8,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { getImageUrl } from '@/utils/image'
-import { Loader2, Save, Upload } from 'lucide-vue-next'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
+import { Loader2, Save } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const {
-  coverFileInput,
   currentLang,
   fetchConfig,
   form,
-  handleUploadCover,
   languages,
   loading,
   saveConfig,
   saving,
-  uploadingCover,
 } = useTelegramBotSettings()
 
 onMounted(() => {
@@ -110,20 +107,7 @@ onMounted(() => {
         </div>
         <div class="space-y-2">
           <Label>{{ t('telegramBot.settings.coverUrl') }}</Label>
-          <div
-            class="cursor-pointer rounded-lg border border-dashed border-border p-4 text-center hover:border-primary"
-            @click="coverFileInput?.click()"
-          >
-            <input ref="coverFileInput" type="file" class="hidden" accept="image/*" @change="handleUploadCover($event)" />
-            <div v-if="form.basic.cover_url" class="space-y-2">
-              <img :src="getImageUrl(form.basic.cover_url)" class="mx-auto h-24 rounded-lg object-cover" />
-              <div class="text-xs text-muted-foreground">{{ uploadingCover ? t('admin.common.loading') : t('telegramBot.settings.clickToReplace') }}</div>
-            </div>
-            <div v-else class="flex flex-col items-center gap-1 py-2">
-              <Upload class="h-5 w-5 text-muted-foreground" />
-              <span class="text-xs text-muted-foreground">{{ t('telegramBot.settings.clickToUpload') }}</span>
-            </div>
-          </div>
+          <MediaPicker v-model="form.basic.cover_url" scene="telegram" />
         </div>
       </CardContent>
     </Card>

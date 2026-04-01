@@ -19,6 +19,7 @@ interface SMTPData {
   from_name: string
   use_tls: boolean
   use_ssl: boolean
+  order_notification_enabled: boolean
   verify_code: {
     expire_minutes: number
     send_interval_seconds: number
@@ -49,6 +50,7 @@ const form = reactive({
   from_name: '',
   use_tls: true,
   use_ssl: false,
+  order_notification_enabled: true,
   verify_code: {
     expire_minutes: 10,
     send_interval_seconds: 60,
@@ -69,6 +71,7 @@ const syncFromProps = () => {
   form.from_name = props.data.from_name
   form.use_tls = props.data.use_tls
   form.use_ssl = props.data.use_ssl
+  form.order_notification_enabled = props.data.order_notification_enabled ?? true
   form.verify_code.expire_minutes = props.data.verify_code.expire_minutes
   form.verify_code.send_interval_seconds = props.data.verify_code.send_interval_seconds
   form.verify_code.max_attempts = props.data.verify_code.max_attempts
@@ -100,6 +103,7 @@ const save = async () => {
       from_name: form.from_name,
       use_tls: form.use_tls,
       use_ssl: form.use_ssl,
+      order_notification_enabled: form.order_notification_enabled,
       verify_code: {
         expire_minutes: Number(form.verify_code.expire_minutes),
         send_interval_seconds: Number(form.verify_code.send_interval_seconds),
@@ -158,6 +162,16 @@ defineExpose({ save, submitting, smtpTesting })
             <label for="smtp-tls" class="text-sm font-medium">{{ t('admin.settings.smtp.useTLS') }}</label>
             <input id="smtp-ssl" v-model="form.use_ssl" type="checkbox" class="ml-4 h-4 w-4 accent-primary" />
             <label for="smtp-ssl" class="text-sm font-medium">{{ t('admin.settings.smtp.useSSL') }}</label>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div class="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
+            <input id="smtp-order-notification" v-model="form.order_notification_enabled" type="checkbox" class="h-4 w-4 accent-primary" :disabled="!form.enabled" />
+            <div>
+              <label for="smtp-order-notification" class="text-sm font-medium">{{ t('admin.settings.smtp.orderNotificationEnabled') }}</label>
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.smtp.orderNotificationHint') }}</p>
+            </div>
           </div>
         </div>
 

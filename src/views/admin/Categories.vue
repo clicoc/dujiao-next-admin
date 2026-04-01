@@ -11,6 +11,7 @@ import { Dialog, DialogScrollContent, DialogHeader, DialogTitle } from '@/compon
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { getLocalizedText } from '@/utils/format'
 import { getImageUrl } from '@/utils/image'
 import { notifyError } from '@/utils/notify'
@@ -25,9 +26,7 @@ const isEditing = ref(false)
 const categories = ref<AdminCategory[]>([])
 const currentLang = ref('zh-CN')
 const route = useRoute()
-const uploading = ref(false)
 const submitting = ref(false)
-const iconFileInput = ref<HTMLInputElement | null>(null)
 
 const languages = computed(() => [
   { code: 'zh-CN', name: t('admin.common.lang.zhCN') },
@@ -164,36 +163,6 @@ const handleDelete = async (category: AdminCategory) => {
   } catch (err: any) {
     notifyError(t('admin.categories.errors.deleteFailed', { message: err?.message || '' }))
   }
-}
-
-const triggerIconInput = () => iconFileInput.value?.click()
-
-const handleIconFileChange = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (file) uploadIcon(file)
-}
-
-const handleIconDrop = (e: DragEvent) => {
-  const file = e.dataTransfer?.files[0]
-  if (file && file.type.startsWith('image/')) uploadIcon(file)
-}
-
-const uploadIcon = async (file: File) => {
-  uploading.value = true
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const res = await adminAPI.upload(formData, 'category')
-    form.icon = (res.data.data as Record<string, string>)?.url || ''
-  } catch (err: any) {
-    notifyError(t('admin.categories.errors.operationFailed', { message: err?.message || '' }))
-  } finally {
-    uploading.value = false
-  }
-}
-
-const removeIcon = () => {
-  form.icon = ''
 }
 
 const openEditById = async (rawId: unknown) => {
@@ -346,25 +315,7 @@ watch(
 
           <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.categories.form.icon') }}</label>
-            <div
-              class="border border-dashed border-border rounded-xl p-4 text-center cursor-pointer relative"
-              @click="triggerIconInput"
-              @drop.prevent="handleIconDrop"
-              @dragover.prevent
-            >
-              <input ref="iconFileInput" type="file" class="hidden" accept="image/*" @change="handleIconFileChange" />
-              <div v-if="form.icon" class="space-y-2">
-                <img :src="getImageUrl(form.icon)" class="h-20 mx-auto rounded-lg object-cover" />
-                <div class="text-xs text-muted-foreground">{{ t('admin.categories.form.iconReplaceTip') }}</div>
-                <button type="button" class="text-xs text-destructive hover:underline" @click.stop="removeIcon">{{ t('admin.categories.form.iconRemove') }}</button>
-              </div>
-              <div v-else class="text-muted-foreground">
-                <span class="text-sm">{{ t('admin.categories.form.iconUploadHint') }}</span>
-              </div>
-              <div v-if="uploading" class="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
-                <div class="animate-spin h-6 w-6 border-b-2 border-white rounded-full"></div>
-              </div>
-            </div>
+            <MediaPicker v-model="form.icon" scene="category" />
           </div>
 
           <div>

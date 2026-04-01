@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { adminAPI } from '@/api/admin'
 import type { AdminPost } from '@/api/types'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import RichEditor from '@/components/RichEditor.vue'
 import IdCell from '@/components/IdCell.vue'
 import { getImageUrl } from '@/utils/image'
@@ -21,11 +22,9 @@ import { useFormValidation, rules } from '@/composables/useFormValidation'
 
 const { t } = useI18n()
 const loading = ref(false)
-const uploading = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
 const currentTab = ref('blog')
-const fileInput = ref<HTMLInputElement | null>(null)
 const currentLang = ref('zh-CN')
 const submitting = ref(false)
 const route = useRoute()
@@ -175,25 +174,6 @@ const openEditById = async (rawId: unknown) => {
     openEditModal(res.data.data)
   } catch (err) {
     notifyError(t('admin.posts.errors.operationFailed', { message: (err as Error).message || '' }))
-  }
-}
-
-const triggerFileInput = () => fileInput.value?.click()
-
-const handleFileChange = async (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (file) {
-    uploading.value = true
-    const formData = new FormData()
-    formData.append('file', file)
-		try {
-			const res = await adminAPI.upload(formData, 'post')
-			form.thumbnail = (res.data.data as Record<string, string>)?.url || ''
-    } catch {
-      notifyError(t('admin.posts.errors.uploadFailed'))
-    } finally {
-      uploading.value = false
-    }
   }
 }
 
@@ -404,20 +384,7 @@ watch(
 
             <div class="col-span-1 md:col-span-2">
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('admin.posts.form.thumbnail') }}</label>
-              <div
-                class="relative cursor-pointer rounded-xl border-2 border-dashed border-border p-6 text-center transition-colors hover:border-primary/40"
-                @click="triggerFileInput"
-              >
-                <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleFileChange" />
-                <div v-if="form.thumbnail" class="relative z-10">
-                  <img :src="getImageUrl(form.thumbnail)" class="mx-auto h-48 rounded-lg object-cover shadow-sm" />
-                  <div class="mt-2 text-xs text-muted-foreground">{{ t('admin.posts.form.thumbnailReplaceTip') }}</div>
-                </div>
-                <div v-else class="text-sm text-muted-foreground">{{ t('admin.posts.form.thumbnailUploadHint') }}</div>
-                <div v-if="uploading" class="absolute inset-0 flex items-center justify-center rounded-xl bg-background/80">
-                  <div class="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></div>
-                </div>
-              </div>
+              <MediaPicker v-model="form.thumbnail" scene="post" />
             </div>
 
             <div class="col-span-1 md:col-span-2">
