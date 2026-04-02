@@ -459,6 +459,9 @@ onMounted(() => {
             <div>
               <span class="text-muted-foreground">{{ t('procurement.columns.localOrderNo') }}</span>
               <div class="mt-0.5 break-all font-mono text-foreground">{{ order.local_order_no || '-' }}</div>
+              <div v-if="order.parent_order_no" class="mt-0.5 text-[10px] text-muted-foreground">
+                {{ t('procurement.columns.parentOrderNo') }}: <span class="font-mono">{{ order.parent_order_no }}</span>
+              </div>
             </div>
             <div>
               <span class="text-muted-foreground">{{ t('procurement.columns.upstreamOrderNo') }}</span>
@@ -553,6 +556,9 @@ onMounted(() => {
               <div>
                 <div class="text-xs text-muted-foreground">{{ t('procurement.columns.localOrderNo') }}</div>
                 <div class="mt-1 break-all text-sm font-mono font-medium">{{ detailOrder.local_order_no || '-' }}</div>
+                <div v-if="detailOrder.parent_order_no" class="mt-1 text-xs text-muted-foreground">
+                  {{ t('procurement.columns.parentOrderNo') }}: <span class="font-mono">{{ detailOrder.parent_order_no }}</span>
+                </div>
               </div>
               <div>
                 <div class="text-xs text-muted-foreground">{{ t('procurement.columns.upstreamOrderNo') }}</div>

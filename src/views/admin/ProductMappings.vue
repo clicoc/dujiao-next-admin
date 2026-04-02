@@ -13,7 +13,7 @@ import { getLocalizedText } from '@/utils/format'
 import { buildAdminCategoryPath, createAdminCategoryChildCountMap, createAdminCategoryMap, flattenAdminCategories, isAdminProductCategorySelectable } from '@/utils/category'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const loading = ref(true)
 const mappings = ref<(AdminProductMapping & { product?: AdminProduct })[]>([])
 const connections = ref<AdminSiteConnection[]>([])
@@ -71,10 +71,16 @@ const showImportModal = ref(false)
 const importConnectionId = ref('')
 const importCategoryId = ref('__none__')
 const upstreamProducts = ref<UpstreamProduct[]>([])
+const mappedUpstreamIds = ref<Set<number>>(new Set())
 const loadingUpstream = ref(false)
+const loadingMoreUpstream = ref(false)
+const upstreamPage = ref(1)
+const upstreamTotal = ref(0)
+const upstreamPageSize = 50
 const selectedProductIds = ref<Set<number>>(new Set())
 const importExpandedIds = ref<Set<number>>(new Set())
 const importing = ref(false)
+const importProgress = ref({ done: 0, total: 0, success: 0 })
 
 const normalizeFilterValue = (value: string) => (value === '__all__' ? '' : value)
 
@@ -125,15 +131,7 @@ const getCategoryOptionName = (category: AdminCategory) => {
   return getLocalizedText(category.name)
 }
 
-const getCategoryLeafTip = () => {
-  if (locale.value === 'en-US') {
-    return 'Root categories with child categories cannot receive products directly. Prefer a leaf category.'
-  }
-  if (locale.value === 'zh-TW') {
-    return '已有二級分類的一級分類不能直接掛商品，請優先選擇末級分類'
-  }
-  return '已有二级分类的一级分类不能直接挂商品，请优先选择末级分类'
-}
+
 
 // --- Detail expand ---
 
@@ -167,6 +165,16 @@ const skuMappingByLocalId = computed(() => {
   return map
 })
 
+const getConnectionExchangeRate = (connectionId: number): number => {
+  const conn = connections.value.find((c) => c.id === connectionId)
+  return conn?.exchange_rate || 1
+}
+
+// 上游价格 × 汇率 = 本地币种等价
+const toLocalCurrency = (upstreamPrice: number, connectionId: number): number => {
+  return upstreamPrice * getConnectionExchangeRate(connectionId)
+}
+
 // --- Fetch ---
 
 const fetchConnections = async () => {
@@ -187,6 +195,7 @@ const fetchMappings = async (page = 1) => {
   loading.value = true
   expandedMappingId.value = null
   detailData.value = null
+  selectedMappingIds.value = new Set()
   try {
     const connId = normalizeFilterValue(filters.connection_id)
     const res = await adminAPI.getProductMappings({
@@ -210,6 +219,72 @@ const jumpToPage = () => {
 }
 
 const handleFilterChange = () => fetchMappings(1)
+
+// --- Batch selection ---
+const selectedMappingIds = ref<Set<number>>(new Set())
+const batchOperating = ref(false)
+
+const allMappingsSelected = computed(() => {
+  if (mappings.value.length === 0) return false
+  return mappings.value.every((m) => selectedMappingIds.value.has(m.id))
+})
+
+const toggleMappingSelect = (id: number) => {
+  const next = new Set(selectedMappingIds.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  selectedMappingIds.value = next
+}
+
+const toggleAllMappings = () => {
+  selectedMappingIds.value = allMappingsSelected.value
+    ? new Set()
+    : new Set(mappings.value.map((m) => m.id))
+}
+
+const handleBatchSync = async () => {
+  const ids = Array.from(selectedMappingIds.value)
+  if (ids.length === 0) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchSyncProductMappings(ids)
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('productMappings.batch.syncResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedMappingIds.value = new Set()
+    fetchMappings(pagination.page)
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
+
+const handleBatchStatus = async (isActive: boolean) => {
+  const ids = Array.from(selectedMappingIds.value)
+  if (ids.length === 0) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchUpdateProductMappingStatus(ids, isActive)
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('productMappings.batch.statusResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedMappingIds.value = new Set()
+    fetchMappings(pagination.page)
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
+
+const handleBatchDelete = async () => {
+  const ids = Array.from(selectedMappingIds.value)
+  if (ids.length === 0) return
+  const confirmed = await confirmAction({
+    description: t('productMappings.batch.deleteConfirm', { count: ids.length }),
+    confirmText: t('admin.common.delete'),
+    variant: 'destructive',
+  })
+  if (!confirmed) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchDeleteProductMappings(ids)
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('productMappings.batch.deleteResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedMappingIds.value = new Set()
+    fetchMappings(pagination.page)
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
 
 // --- Actions ---
 
@@ -248,18 +323,21 @@ const handleDelete = async (mapping: AdminProductMapping) => {
 
 // --- Import dialog ---
 
+const selectableProducts = computed(() => upstreamProducts.value.filter((p) => !mappedUpstreamIds.value.has(p.id)))
+
 const allSelected = computed(() => {
-  if (upstreamProducts.value.length === 0) return false
-  return upstreamProducts.value.every((p) => selectedProductIds.value.has(p.id))
+  if (selectableProducts.value.length === 0) return false
+  return selectableProducts.value.every((p) => selectedProductIds.value.has(p.id))
 })
 
 const toggleSelectAll = () => {
   selectedProductIds.value = allSelected.value
     ? new Set()
-    : new Set(upstreamProducts.value.map((p) => p.id))
+    : new Set(selectableProducts.value.map((p) => p.id))
 }
 
 const toggleProduct = (id: number) => {
+  if (mappedUpstreamIds.value.has(id)) return
   const next = new Set(selectedProductIds.value)
   next.has(id) ? next.delete(id) : next.add(id)
   selectedProductIds.value = next
@@ -305,6 +383,9 @@ const openImportModal = () => {
   importConnectionId.value = ''
   importCategoryId.value = '__none__'
   upstreamProducts.value = []
+  upstreamTotal.value = 0
+  upstreamPage.value = 1
+  mappedUpstreamIds.value = new Set()
   selectedProductIds.value = new Set()
   importExpandedIds.value = new Set()
   showImportModal.value = true
@@ -312,14 +393,38 @@ const openImportModal = () => {
 
 const closeImportModal = () => { showImportModal.value = false }
 
+const hasMoreUpstream = computed(() => upstreamProducts.value.length < upstreamTotal.value)
+
+const parseUpstreamResult = (res: any): { items: UpstreamProduct[]; total: number; mappedIds?: number[] } => {
+  const data = res.data.data
+  if (Array.isArray(data)) return { items: data, total: data.length }
+  return { items: data?.items || [], total: data?.total || 0, mappedIds: data?.mapped_ids }
+}
+
 const fetchUpstreamProducts = async (connectionId: string) => {
-  if (!connectionId) { upstreamProducts.value = []; return }
+  if (!connectionId) { upstreamProducts.value = []; upstreamTotal.value = 0; mappedUpstreamIds.value = new Set(); return }
   loadingUpstream.value = true
+  upstreamPage.value = 1
   try {
-    const res = await adminAPI.getUpstreamProducts({ connection_id: connectionId, page_size: 200 })
-    const data = res.data.data as UpstreamProduct[] | { items?: UpstreamProduct[] } | null
-    upstreamProducts.value = (Array.isArray(data) ? data : (data as { items?: UpstreamProduct[] })?.items) || []
-  } catch { upstreamProducts.value = [] } finally { loadingUpstream.value = false }
+    const res = await adminAPI.getUpstreamProducts({ connection_id: connectionId, page: 1, page_size: upstreamPageSize })
+    const { items, total, mappedIds } = parseUpstreamResult(res)
+    upstreamProducts.value = items
+    upstreamTotal.value = total
+    if (mappedIds) mappedUpstreamIds.value = new Set(mappedIds)
+  } catch { upstreamProducts.value = []; upstreamTotal.value = 0; mappedUpstreamIds.value = new Set() } finally { loadingUpstream.value = false }
+}
+
+const loadMoreUpstreamProducts = async () => {
+  if (!importConnectionId.value || loadingMoreUpstream.value || !hasMoreUpstream.value) return
+  loadingMoreUpstream.value = true
+  try {
+    const nextPage = upstreamPage.value + 1
+    const res = await adminAPI.getUpstreamProducts({ connection_id: importConnectionId.value, page: nextPage, page_size: upstreamPageSize })
+    const { items, total } = parseUpstreamResult(res)
+    upstreamProducts.value.push(...items)
+    upstreamTotal.value = total
+    upstreamPage.value = nextPage
+  } catch { /* ignore */ } finally { loadingMoreUpstream.value = false }
 }
 
 watch(importConnectionId, (value) => {
@@ -328,40 +433,57 @@ watch(importConnectionId, (value) => {
   fetchUpstreamProducts(value)
 })
 
+const BATCH_SIZE = 3
+
 const handleBatchImport = async () => {
   const ids = Array.from(selectedProductIds.value)
   if (ids.length === 0) return
   importing.value = true
+  importProgress.value = { done: 0, total: ids.length, success: 0 }
+  const categoryId = importCategoryId.value !== '__none__' ? Number(importCategoryId.value) : 0
+  const allResults: { upstream_product_id: number; success: boolean; error?: string }[] = []
+  let successCount = 0
+
   try {
-    const categoryId = importCategoryId.value !== '__none__' ? Number(importCategoryId.value) : 0
-    let results: { upstream_product_id: number; success: boolean; error?: string }[] = []
-    let successCount = 0
-    try {
-      const res = await adminAPI.batchImportUpstreamProducts({
-        connection_id: Number(importConnectionId.value),
-        upstream_product_ids: ids,
-        category_id: categoryId || undefined,
-      })
-      const result = res.data.data as { results?: typeof results; success_count?: number } | null
-      results = result?.results || []
-      successCount = result?.success_count || 0
-    } catch (batchErr: any) {
-      if (batchErr?.response?.status === 404) {
-        for (const id of ids) {
-          try {
-            await adminAPI.importUpstreamProduct({ connection_id: Number(importConnectionId.value), upstream_product_id: id, category_id: categoryId || undefined })
-            results.push({ upstream_product_id: id, success: true }); successCount++
-          } catch (singleErr: any) {
-            results.push({ upstream_product_id: id, success: false, error: singleErr?.response?.data?.message || singleErr?.message })
+    // 分批导入，每批 BATCH_SIZE 条
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const batchIds = ids.slice(i, i + BATCH_SIZE)
+      try {
+        const res = await adminAPI.batchImportUpstreamProducts({
+          connection_id: Number(importConnectionId.value),
+          upstream_product_ids: batchIds,
+          category_id: categoryId || undefined,
+        })
+        const result = res.data.data as { results?: typeof allResults; success_count?: number } | null
+        const batchResults = result?.results || []
+        allResults.push(...batchResults)
+        successCount += result?.success_count || 0
+      } catch (batchErr: any) {
+        if (batchErr?.response?.status === 404) {
+          // 后端不支持批量接口，逐条导入
+          for (const id of batchIds) {
+            try {
+              await adminAPI.importUpstreamProduct({ connection_id: Number(importConnectionId.value), upstream_product_id: id, category_id: categoryId || undefined })
+              allResults.push({ upstream_product_id: id, success: true }); successCount++
+            } catch (singleErr: any) {
+              allResults.push({ upstream_product_id: id, success: false, error: singleErr?.response?.data?.message || singleErr?.message })
+            }
+          }
+        } else {
+          // 整批失败
+          for (const id of batchIds) {
+            allResults.push({ upstream_product_id: id, success: false, error: batchErr?.response?.data?.message || batchErr?.message })
           }
         }
-      } else { throw batchErr }
+      }
+      importProgress.value = { done: Math.min(i + BATCH_SIZE, ids.length), total: ids.length, success: successCount }
     }
+
     if (successCount === ids.length) {
       notifySuccess(t('productMappings.import.batchSuccess', { count: successCount }))
       closeImportModal()
     } else {
-      const failed = results.filter((r) => !r.success)
+      const failed = allResults.filter((r) => !r.success)
       const failedDetails = failed.map((r) => {
         const prod = upstreamProducts.value.find((p) => p.id === r.upstream_product_id)
         const name = prod ? getLocalizedText(prod.title) : `#${r.upstream_product_id}`
@@ -369,9 +491,13 @@ const handleBatchImport = async () => {
       }).join('\n')
       if (successCount > 0) notifySuccess(t('productMappings.import.batchPartial', { success: successCount, total: ids.length }))
       notifyError(failedDetails)
-      const successIds = new Set(results.filter((r) => r.success).map((r) => r.upstream_product_id))
+      const successIds = new Set(allResults.filter((r) => r.success).map((r) => r.upstream_product_id))
       selectedProductIds.value = new Set([...selectedProductIds.value].filter(id => !successIds.has(id)))
     }
+    // 更新已映射标识
+    const newMapped = new Set(mappedUpstreamIds.value)
+    for (const r of allResults) { if (r.success) newMapped.add(r.upstream_product_id) }
+    mappedUpstreamIds.value = newMapped
     fetchMappings(1)
   } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { importing.value = false }
 }
@@ -383,7 +509,10 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
   <div class="space-y-6">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="text-2xl font-semibold">{{ t('productMappings.title') }}</h1>
-      <Button class="w-full sm:w-auto" @click="openImportModal">{{ t('productMappings.importButton') }}</Button>
+      <div class="flex w-full gap-2 sm:w-auto">
+        <Button variant="outline" class="w-full sm:w-auto" :disabled="loading" @click="fetchMappings(pagination.page)">{{ t('productMappings.refresh') }}</Button>
+        <Button class="w-full sm:w-auto" @click="openImportModal">{{ t('productMappings.importButton') }}</Button>
+      </div>
     </div>
 
     <!-- Filter -->
@@ -401,6 +530,18 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
       </div>
     </div>
 
+    <!-- Batch action bar -->
+    <div v-if="selectedMappingIds.size > 0" class="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+      <span class="text-sm font-medium">{{ t('productMappings.batch.selected', { count: selectedMappingIds.size }) }}</span>
+      <div class="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" :disabled="batchOperating" @click="handleBatchSync">{{ t('productMappings.batch.sync') }}</Button>
+        <Button size="sm" variant="outline" :disabled="batchOperating" @click="handleBatchStatus(true)">{{ t('productMappings.batch.enable') }}</Button>
+        <Button size="sm" variant="outline" :disabled="batchOperating" @click="handleBatchStatus(false)">{{ t('productMappings.batch.disable') }}</Button>
+        <Button size="sm" variant="destructive" :disabled="batchOperating" @click="handleBatchDelete">{{ t('productMappings.batch.delete') }}</Button>
+      </div>
+      <button class="ml-auto text-xs text-muted-foreground hover:text-foreground" @click="selectedMappingIds = new Set()">{{ t('productMappings.batch.clearSelection') }}</button>
+    </div>
+
     <!-- Mapping list -->
     <div class="space-y-3">
       <div v-if="loading" class="rounded-xl border border-border bg-card overflow-hidden">
@@ -408,6 +549,10 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
       </div>
       <div v-else-if="mappings.length === 0" class="rounded-xl border border-border bg-card px-6 py-12 text-center text-muted-foreground">
         {{ t('productMappings.empty') }}
+      </div>
+      <div v-if="!loading && mappings.length > 0" class="flex items-center gap-2 px-1">
+        <input type="checkbox" :checked="allMappingsSelected" :indeterminate="selectedMappingIds.size > 0 && !allMappingsSelected" class="h-4 w-4 rounded border-border accent-primary cursor-pointer" @change="toggleAllMappings" />
+        <span class="text-xs text-muted-foreground">{{ t('productMappings.batch.selectAll') }}</span>
       </div>
 
       <div
@@ -421,6 +566,8 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
           class="flex flex-col gap-3 px-5 py-4 cursor-pointer transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:gap-4"
           @click="toggleMappingExpand(mapping)"
         >
+          <!-- Checkbox -->
+          <input type="checkbox" :checked="selectedMappingIds.has(mapping.id)" class="h-4 w-4 shrink-0 rounded border-border accent-primary cursor-pointer" @click.stop="toggleMappingSelect(mapping.id)" />
           <!-- Expand arrow -->
           <svg
             class="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200"
@@ -484,6 +631,7 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                     <th class="min-w-[220px] px-3 py-2.5 text-left font-medium">{{ t('productMappings.import.skuSpec') }}</th>
                     <th class="min-w-[120px] px-3 py-2.5 text-right font-medium">{{ t('productMappings.detail.localPrice') }}</th>
                     <th class="min-w-[120px] px-3 py-2.5 text-right font-medium">{{ t('productMappings.detail.upstreamPrice') }}</th>
+                    <th class="min-w-[120px] px-3 py-2.5 text-right font-medium">{{ t('productMappings.detail.costPrice') }}</th>
                     <th class="min-w-[120px] px-3 py-2.5 text-center font-medium">{{ t('productMappings.detail.priceDiff') }}</th>
                     <th class="min-w-[120px] px-3 py-2.5 text-center font-medium">{{ t('productMappings.detail.upstreamStock') }}</th>
                     <th class="min-w-[120px] px-3 py-2.5 text-center font-medium">{{ t('productMappings.detail.upstreamActive') }}</th>
@@ -491,7 +639,7 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                 </thead>
                 <tbody class="divide-y divide-border">
                   <tr v-if="!mapping.product?.skus?.length" >
-                    <td colspan="7" class="px-3 py-6 text-center text-muted-foreground">{{ t('productMappings.detail.noSkus') }}</td>
+                    <td colspan="8" class="px-3 py-6 text-center text-muted-foreground">{{ t('productMappings.detail.noSkus') }}</td>
                   </tr>
                   <tr
                     v-for="sku in (mapping.product?.skus as AdminProductSKU[] | undefined) || []"
@@ -504,16 +652,24 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                     <td class="min-w-[120px] px-3 py-2.5 text-right font-mono">
                       <template v-if="skuMappingByLocalId[sku.id]">
                         <span class="text-foreground">{{ skuMappingByLocalId[sku.id]?.upstream_price }}</span>
+                        <span v-if="getConnectionExchangeRate(mapping.connection_id) !== 1" class="ml-0.5 text-[10px] text-muted-foreground">&times;{{ getConnectionExchangeRate(mapping.connection_id) }}</span>
+                      </template>
+                      <span v-else class="text-muted-foreground">-</span>
+                    </td>
+                    <td class="min-w-[120px] px-3 py-2.5 text-right font-mono">
+                      <template v-if="skuMappingByLocalId[sku.id]">
+                        <span class="text-foreground">{{ toLocalCurrency(Number(skuMappingByLocalId[sku.id]?.upstream_price), mapping.connection_id).toFixed(2) }}</span>
                       </template>
                       <span v-else class="text-muted-foreground">-</span>
                     </td>
                     <td class="px-3 py-2.5 text-center">
                       <template v-if="skuMappingByLocalId[sku.id]">
                         <span
-                          v-if="Number(sku.price_amount) !== Number(skuMappingByLocalId[sku.id]?.upstream_price)"
-                          class="inline-flex rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200"
+                          v-if="Number(sku.price_amount) !== toLocalCurrency(Number(skuMappingByLocalId[sku.id]?.upstream_price), mapping.connection_id)"
+                          class="inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium border"
+                          :class="Number(sku.price_amount) > toLocalCurrency(Number(skuMappingByLocalId[sku.id]?.upstream_price), mapping.connection_id) ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'"
                         >
-                          {{ (Number(sku.price_amount) - Number(skuMappingByLocalId[sku.id]?.upstream_price)).toFixed(2) }}
+                          {{ Number(sku.price_amount) > toLocalCurrency(Number(skuMappingByLocalId[sku.id]?.upstream_price), mapping.connection_id) ? '+' : '' }}{{ (Number(sku.price_amount) - toLocalCurrency(Number(skuMappingByLocalId[sku.id]?.upstream_price), mapping.connection_id)).toFixed(2) }}
                         </span>
                         <span v-else class="text-emerald-600">-</span>
                       </template>
@@ -523,11 +679,11 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                       <template v-if="skuMappingByLocalId[sku.id]">
                         <span
                           class="inline-flex rounded-full px-1.5 py-0.5 text-[10px]"
-                          :class="(skuMappingByLocalId[sku.id]?.upstream_stock ?? 0) > 0
+                          :class="(skuMappingByLocalId[sku.id]?.upstream_stock ?? 0) !== 0
                             ? 'text-emerald-700 bg-emerald-50'
                             : 'text-red-600 bg-red-50'"
                         >
-                          {{ (skuMappingByLocalId[sku.id]?.upstream_stock ?? 0) > 0 ? t('productMappings.import.inStock') : t('productMappings.import.outOfStock') }}
+                          {{ (skuMappingByLocalId[sku.id]?.upstream_stock ?? 0) !== 0 ? ((skuMappingByLocalId[sku.id]?.upstream_stock ?? 0) < 0 ? t('productMappings.import.unlimited') : t('productMappings.import.inStock')) : t('productMappings.import.outOfStock') }}
                         </span>
                       </template>
                       <span v-else class="text-muted-foreground">-</span>
@@ -608,7 +764,6 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p class="mt-1 text-xs text-muted-foreground">{{ getCategoryLeafTip() }}</p>
             </div>
           </div>
 
@@ -619,18 +774,21 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
             <div v-else>
               <div class="flex items-center gap-3 border-b border-border bg-muted/40 px-4 py-2.5">
                 <input type="checkbox" :checked="allSelected" :indeterminate="selectedProductIds.size > 0 && !allSelected" class="h-4 w-4 rounded border-border accent-primary cursor-pointer" @change="toggleSelectAll" />
-                <span class="text-xs font-medium text-muted-foreground">{{ t('productMappings.import.selectAll') }} ({{ upstreamProducts.length }})</span>
+                <span class="text-xs font-medium text-muted-foreground">{{ t('productMappings.import.selectAll') }} ({{ upstreamProducts.length }}/{{ upstreamTotal }})</span>
               </div>
               <div class="divide-y divide-border max-h-[50vh] overflow-y-auto">
-                <div v-for="product in upstreamProducts" :key="product.id" class="transition-colors" :class="selectedProductIds.has(product.id) ? 'bg-primary/5' : ''">
-                  <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20" @click="toggleProduct(product.id)">
-                    <input type="checkbox" :checked="selectedProductIds.has(product.id)" class="h-4 w-4 shrink-0 rounded border-border accent-primary cursor-pointer" @click.stop="toggleProduct(product.id)" />
+                <div v-for="product in upstreamProducts" :key="product.id" class="transition-colors" :class="[selectedProductIds.has(product.id) ? 'bg-primary/5' : '', mappedUpstreamIds.has(product.id) ? 'opacity-50' : '']">
+                  <div class="flex items-center gap-3 px-4 py-3" :class="mappedUpstreamIds.has(product.id) ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/20'" @click="toggleProduct(product.id)">
+                    <input type="checkbox" :checked="selectedProductIds.has(product.id)" :disabled="mappedUpstreamIds.has(product.id)" class="h-4 w-4 shrink-0 rounded border-border accent-primary" :class="mappedUpstreamIds.has(product.id) ? 'cursor-not-allowed' : 'cursor-pointer'" @click.stop="toggleProduct(product.id)" />
                     <div class="min-w-0 flex-1">
                       <div class="flex flex-wrap items-center gap-2">
                         <span class="break-words text-sm font-medium text-foreground sm:truncate">{{ getLocalizedText(product.title) }}</span>
                         <span class="shrink-0 text-[10px] font-mono text-muted-foreground">#{{ product.id }}</span>
                         <span class="shrink-0 inline-flex rounded-full border px-2 py-0.5 text-[10px]" :class="product.is_active ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-muted-foreground border-border bg-muted/30'">
                           {{ product.is_active ? t('productMappings.status.active') : t('productMappings.status.inactive') }}
+                        </span>
+                        <span v-if="mappedUpstreamIds.has(product.id)" class="shrink-0 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                          {{ t('productMappings.import.alreadyMapped') }}
                         </span>
                       </div>
                       <div class="mt-1 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -669,6 +827,15 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                     </div>
                   </div>
                 </div>
+                <div v-if="hasMoreUpstream" class="px-4 py-3 text-center border-t border-border/50">
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                    :disabled="loadingMoreUpstream"
+                    @click="loadMoreUpstreamProducts"
+                  >
+                    {{ loadingMoreUpstream ? t('productMappings.import.loadingMore') : t('productMappings.import.loadMore', { remaining: upstreamTotal - upstreamProducts.length }) }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -679,7 +846,7 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
             <div class="flex flex-col-reverse gap-3 sm:flex-row">
               <Button variant="outline" class="w-full sm:w-auto" @click="closeImportModal">{{ t('admin.common.cancel') }}</Button>
               <Button class="w-full sm:w-auto" :disabled="selectedProductIds.size === 0 || !importConnectionId || importing" @click="handleBatchImport">
-                {{ importing ? t('productMappings.import.importing') : t('productMappings.import.submitBatch', { count: selectedProductIds.size }) }}
+                {{ importing ? t('productMappings.import.importingProgress', { done: importProgress.done, total: importProgress.total, success: importProgress.success }) : t('productMappings.import.submitBatch', { count: selectedProductIds.size }) }}
               </Button>
             </div>
           </div>

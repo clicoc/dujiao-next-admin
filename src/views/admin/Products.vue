@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { notifyError } from '@/utils/notify'
+import { notifyError, notifySuccess } from '@/utils/notify'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import { confirmAction } from '@/utils/confirm'
 import ProductEditModal from './components/ProductEditModal.vue'
@@ -43,6 +43,65 @@ const pagination = reactive({
   total: 0,
   total_page: 0,
 })
+
+// --- Batch ---
+const selectedIds = ref<Set<number>>(new Set())
+const batchOperating = ref(false)
+const batchCategoryId = ref('')
+
+const allSelected = computed(() => products.value.length > 0 && products.value.every((p) => selectedIds.value.has(p.id)))
+
+const toggleSelectAll = () => {
+  selectedIds.value = allSelected.value ? new Set() : new Set(products.value.map((p) => p.id))
+}
+
+const toggleSelect = (id: number) => {
+  const next = new Set(selectedIds.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  selectedIds.value = next
+}
+
+const handleBatchStatus = async (isActive: boolean) => {
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchUpdateProductStatus(ids, isActive)
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('admin.products.batch.statusResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedIds.value = new Set()
+    fetchProducts()
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
+
+const handleBatchCategory = async () => {
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length || !batchCategoryId.value) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchUpdateProductCategory(ids, Number(batchCategoryId.value))
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('admin.products.batch.categoryResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedIds.value = new Set()
+    batchCategoryId.value = ''
+    fetchProducts()
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
+
+const handleBatchDelete = async () => {
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length) return
+  const confirmed = await confirmAction({ description: t('admin.products.batch.deleteConfirm', { count: ids.length }), confirmText: t('admin.common.delete'), variant: 'destructive' })
+  if (!confirmed) return
+  batchOperating.value = true
+  try {
+    const res = await adminAPI.batchDeleteProducts(ids)
+    const data = res.data.data as { success_count?: number } | null
+    notifySuccess(t('admin.products.batch.deleteResult', { success: data?.success_count || 0, total: ids.length }))
+    selectedIds.value = new Set()
+    fetchProducts()
+  } catch (err: any) { notifyError(err?.response?.data?.message || err?.message) } finally { batchOperating.value = false }
+}
 
 const siteCurrency = ref('CNY')
 
@@ -141,6 +200,7 @@ const autoStockBadgeClass = (product: AdminProduct) => {
 
 const fetchProducts = async () => {
   loading.value = true
+  selectedIds.value = new Set()
   try {
     const res = await adminAPI.getProducts({
       page: pagination.page,
@@ -383,10 +443,41 @@ watch(
       </div>
     </div>
 
+    <!-- Batch action bar -->
+    <div v-if="selectedIds.size > 0" class="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+      <span class="text-sm font-medium">{{ t('admin.products.batch.selected', { count: selectedIds.size }) }}</span>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" :disabled="batchOperating" @click="handleBatchStatus(true)">{{ t('admin.products.batch.activate') }}</Button>
+        <Button size="sm" variant="outline" :disabled="batchOperating" @click="handleBatchStatus(false)">{{ t('admin.products.batch.deactivate') }}</Button>
+        <div class="flex items-center gap-1">
+          <Select v-model="batchCategoryId">
+            <SelectTrigger class="h-8 w-[160px] text-xs"><SelectValue :placeholder="t('admin.products.batch.categoryPlaceholder')" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="item in flattenAdminCategories(categories).map(i => ({ ...i, selectable: isAdminProductCategorySelectable(i.category, categoryChildCountMap) }))"
+                :key="item.category.id"
+                :value="String(item.category.id)"
+                :disabled="!item.selectable"
+                :class="item.depth > 0 ? 'pl-6' : ''"
+              >
+                {{ item.depth > 0 ? getLocalizedText(item.category.name) : buildAdminCategoryPath(item.category, categoryMap, (c) => getLocalizedText(c.name)) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" :disabled="batchOperating || !batchCategoryId" @click="handleBatchCategory">{{ t('admin.products.batch.moveCategory') }}</Button>
+        </div>
+        <Button size="sm" variant="destructive" :disabled="batchOperating" @click="handleBatchDelete">{{ t('admin.products.batch.delete') }}</Button>
+      </div>
+      <button class="ml-auto text-xs text-muted-foreground hover:text-foreground" @click="selectedIds = new Set()">{{ t('admin.products.batch.clearSelection') }}</button>
+    </div>
+
     <div class="rounded-xl border border-border bg-card overflow-x-auto">
       <Table class="min-w-[920px]">
         <TableHeader class="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
           <TableRow>
+            <TableHead class="w-10 px-3 py-3">
+              <input type="checkbox" :checked="allSelected" :indeterminate="selectedIds.size > 0 && !allSelected" class="h-4 w-4 rounded border-border accent-primary cursor-pointer" @change="toggleSelectAll" />
+            </TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.products.table.id') }}</TableHead>
             <TableHead class="px-6 py-3 min-w-[320px]">{{ t('admin.products.table.name') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.products.table.price') }}</TableHead>
@@ -398,14 +489,17 @@ watch(
         </TableHeader>
         <TableBody class="divide-y divide-border">
           <TableRow v-if="loading">
-            <TableCell :colspan="7" class="p-0">
+            <TableCell :colspan="8" class="p-0">
               <TableSkeleton :columns="7" :rows="5" />
             </TableCell>
           </TableRow>
           <TableRow v-else-if="products.length === 0">
-            <TableCell colspan="7" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.products.empty') }}</TableCell>
+            <TableCell colspan="8" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.products.empty') }}</TableCell>
           </TableRow>
           <TableRow v-for="product in products" :key="product.id" class="hover:bg-muted/30">
+            <TableCell class="w-10 px-3 py-4">
+              <input type="checkbox" :checked="selectedIds.has(product.id)" class="h-4 w-4 rounded border-border accent-primary cursor-pointer" @click.stop="toggleSelect(product.id)" />
+            </TableCell>
             <TableCell class="px-6 py-4">
               <IdCell :value="product.id" />
             </TableCell>
