@@ -1,4 +1,3 @@
-import axios from 'axios'
 import i18n from '@/i18n'
 import type { ApiResponse } from './types'
 import { notifyError } from '@/utils/notify'
@@ -27,97 +26,163 @@ const redirectToLogin = () => {
   window.location.href = `${ADMIN_PATH}/login`
 }
 
-const isLoginEndpoint = (url?: string) => {
-  if (!url) return false
-  const path = url.replace(/^https?:\/\/[^/]+/, '')
-  return /\/admin\/login\b/.test(path)
+const isLoginEndpoint = (url: string) => /\/admin\/login\b/.test(url)
+
+interface RequestOptions {
+  params?: Record<string, any>
+  headers?: Record<string, string>
+  blob?: boolean
+  data?: any
+  [key: string]: any
 }
 
-export const api = axios.create({
-  baseURL: `${API_BASE_URL}${API_PREFIX}`,
-  timeout: 10000,
-})
-
-api.interceptors.request.use(
-  (config) => {
-    const locale = (i18n.global.locale as any).value || i18n.global.locale
-    if (locale) {
-      config.headers['X-Lang'] = locale
+function buildUrl(base: string, path: string, params?: Record<string, any>): string {
+  const url = `${base}${path}`
+  if (!params) return url
+  const searchParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, String(value))
     }
-    const token = localStorage.getItem('admin_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => Promise.reject(error)
-)
-
-api.interceptors.response.use(
-  (response) => {
-    const data: ApiResponse = response.data
-    if (!data) {
-      const message = t('common.api.responseMissing')
-      notifyError(message)
-      return Promise.reject(createNotifiedError(message))
-    }
-    if (typeof data.status_code !== 'undefined' && data.status_code !== 0) {
-      const fallbackMessage = t('common.api.requestFailed')
-      const message = data.msg || fallbackMessage
-      if (data.status_code === 401 && !isLoginEndpoint(response.config.url)) {
-        notifyError(message)
-        redirectToLogin()
-        return Promise.reject(createNotifiedError(message))
-      }
-      notifyError(message)
-      return Promise.reject(createNotifiedError(message))
-    }
-    return response
-  },
-  (error) => {
-    if (error.response) {
-      const status = error.response.status
-      let message = t('common.api.requestFailed')
-      switch (status) {
-        case 401:
-          message = t('common.api.unauthorized')
-          if (!isLoginEndpoint(error.config?.url)) {
-            redirectToLogin()
-          }
-          break
-        case 403:
-          message = t('common.api.forbidden')
-          break
-        case 404:
-          message = t('common.api.notFound')
-          break
-        case 500:
-          message = t('common.api.serverError')
-          break
-        case 502:
-          message = t('common.api.badGateway')
-          break
-        case 503:
-          message = t('common.api.serviceUnavailable')
-          break
-        default:
-          message = t('common.api.requestFailedStatus', { status })
-      }
-      notifyError(message)
-      return Promise.reject(createNotifiedError(message))
-    }
-    if (error.request) {
-      const message = t('common.api.networkError')
-      notifyError(message)
-      return Promise.reject(createNotifiedError(message))
-    }
-    if ((error as NotifiedError)?.__notified) {
-      return Promise.reject(error)
-    }
-    if (error?.message) {
-      notifyError(error.message)
-      return Promise.reject(createNotifiedError(error.message))
-    }
-    return Promise.reject(error)
   }
-)
+  const qs = searchParams.toString()
+  return qs ? `${url}?${qs}` : url
+}
+
+function getLocale(): string {
+  return (i18n.global.locale as any).value || i18n.global.locale || ''
+}
+
+function getHttpErrorMessage(status: number): string {
+  switch (status) {
+    case 401: return t('common.api.unauthorized')
+    case 403: return t('common.api.forbidden')
+    case 404: return t('common.api.notFound')
+    case 500: return t('common.api.serverError')
+    case 502: return t('common.api.badGateway')
+    case 503: return t('common.api.serviceUnavailable')
+    default: return t('common.api.requestFailedStatus', { status })
+  }
+}
+
+const baseURL = `${API_BASE_URL}${API_PREFIX}`
+const timeout = 10000
+
+async function request(method: string, path: string, bodyOrOptions?: any, options?: RequestOptions): Promise<{ data: any }> {
+  let body: any = undefined
+  let opts: RequestOptions = {}
+
+  if (method === 'GET' || method === 'DELETE') {
+    opts = bodyOrOptions || {}
+    if (opts.data) {
+      body = opts.data
+    }
+  } else {
+    body = bodyOrOptions
+    opts = options || {}
+  }
+
+  const url = buildUrl(baseURL, path, opts.params)
+  const headers: Record<string, string> = { ...opts.headers }
+
+  const locale = getLocale()
+  if (locale) {
+    headers['X-Lang'] = locale
+  }
+
+  const token = localStorage.getItem('admin_token')
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  if (body !== undefined && !(body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+  } catch (err: any) {
+    clearTimeout(timer)
+    const message = t('common.api.networkError')
+    notifyError(message)
+    return Promise.reject(createNotifiedError(message))
+  } finally {
+    clearTimeout(timer)
+  }
+
+  // Blob response
+  if (opts.blob) {
+    if (!response.ok) {
+      const message = getHttpErrorMessage(response.status)
+      if (response.status === 401 && !isLoginEndpoint(path)) {
+        redirectToLogin()
+      }
+      notifyError(message)
+      return Promise.reject(createNotifiedError(message))
+    }
+    const blob = await response.blob()
+    return { data: blob }
+  }
+
+  // Parse JSON
+  let data: ApiResponse
+  try {
+    data = await response.json()
+  } catch {
+    if (!response.ok) {
+      const status = response.status
+      const message = getHttpErrorMessage(status)
+      if (status === 401 && !isLoginEndpoint(path)) {
+        redirectToLogin()
+      }
+      notifyError(message)
+      return Promise.reject(createNotifiedError(message))
+    }
+    const message = t('common.api.responseMissing')
+    notifyError(message)
+    return Promise.reject(createNotifiedError(message))
+  }
+
+  // HTTP error with JSON body
+  if (!response.ok) {
+    const status = response.status
+    const message = data?.msg || getHttpErrorMessage(status)
+    if (status === 401 && !isLoginEndpoint(path)) {
+      redirectToLogin()
+    }
+    notifyError(message)
+    return Promise.reject(createNotifiedError(message))
+  }
+
+  // Business error check
+  if (typeof data.status_code !== 'undefined' && data.status_code !== 0) {
+    const fallbackMessage = t('common.api.requestFailed')
+    const message = data.msg || fallbackMessage
+    if (data.status_code === 401 && !isLoginEndpoint(path)) {
+      notifyError(message)
+      redirectToLogin()
+      return Promise.reject(createNotifiedError(message))
+    }
+    notifyError(message)
+    return Promise.reject(createNotifiedError(message))
+  }
+
+  return { data }
+}
+
+export const api = {
+  get: (path: string, options?: RequestOptions) => request('GET', path, options),
+  post: (path: string, body?: any, options?: RequestOptions) => request('POST', path, body, options),
+  put: (path: string, body?: any, options?: RequestOptions) => request('PUT', path, body, options),
+  patch: (path: string, body?: any, options?: RequestOptions) => request('PATCH', path, body, options),
+  delete: (path: string, options?: RequestOptions) => request('DELETE', path, options),
+}
