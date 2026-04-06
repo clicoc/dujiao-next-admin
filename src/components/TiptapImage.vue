@@ -40,7 +40,6 @@ const onMouseDown = (event: MouseEvent) => {
 .tiptap-image-wrapper {
   display: flex;
   justify-content: center;
-  margin: 1rem 0;
 }
 
 .image-container {

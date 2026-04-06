@@ -911,12 +911,12 @@ watch(
                 </Button>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div class="md:col-span-1">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuCode') }}</label>
                   <Input v-model="sku.sku_code" :placeholder="t('admin.products.form.skuCodePlaceholder')" :disabled="editingIsMapped" />
                 </div>
-                <div class="md:col-span-1">
+                <div :class="form.fulfillment_type === 'manual' ? 'md:col-span-1' : 'md:col-span-2'">
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuSpec', { lang: getCurrentLangName() }) }}</label>
                   <Input v-model="sku.spec_values[currentLang]" :placeholder="t('admin.products.form.skuSpecPlaceholder')" :disabled="editingIsMapped" />
                 </div>
@@ -933,7 +933,7 @@ watch(
                   <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuManualStock') }}</label>
                   <Input v-model.number="sku.manual_stock_total" type="number" min="-1" :placeholder="t('admin.products.form.skuManualStockPlaceholder')" />
                 </div>
-                <div :class="form.fulfillment_type === 'manual' ? 'md:col-span-1' : 'md:col-span-2'" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div class="md:col-span-1 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.skuSort') }}</label>
                     <Input v-model.number="sku.sort_order" type="number" :placeholder="t('admin.products.form.skuSortPlaceholder')" />

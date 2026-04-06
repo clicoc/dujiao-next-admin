@@ -30,6 +30,7 @@ const { t } = useI18n()
 const open = ref(false)
 const activeTab = ref<'library' | 'upload'>('library')
 const uploading = ref(false)
+const uploadProgress = ref({ current: 0, total: 0 })
 const loading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const dialogFileInput = ref<HTMLInputElement | null>(null)
@@ -112,39 +113,56 @@ function triggerDialogUpload() {
 
 function handleDialogDrop(e: DragEvent) {
   isDialogDragOver.value = false
-  const file = e.dataTransfer?.files[0]
-  if (file && dialogFileInput.value) {
+  const files = e.dataTransfer?.files
+  if (files && files.length > 0 && dialogFileInput.value) {
     const dt = new DataTransfer()
-    dt.items.add(file)
+    Array.from(files).forEach(f => dt.items.add(f))
     dialogFileInput.value.files = dt.files
     handleDialogUpload({ target: dialogFileInput.value } as any)
   }
 }
 
 async function handleDialogUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
   uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await adminAPI.upload(formData, props.scene)
-    const url = (res.data.data as any)?.url
-    if (url) {
-      if (props.multiple) {
-        selected.value.add(url)
-      } else {
-        selected.value = new Set([url])
+  const total = files.length
+  uploadProgress.value = { current: 0, total }
+  let failCount = 0
+  const fileList = Array.from(files)
+
+  for (let i = 0; i < fileList.length; i += 3) {
+    const batch = fileList.slice(i, i + 3)
+    await Promise.allSettled(batch.map(async (file) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      try {
+        const res = await adminAPI.upload(formData, props.scene)
+        const url = (res.data.data as any)?.url
+        if (url) {
+          if (props.multiple) {
+            selected.value.add(url)
+          } else {
+            selected.value = new Set([url])
+          }
+        }
+      } catch {
+        failCount++
+      } finally {
+        uploadProgress.value.current++
       }
-      activeTab.value = 'library'
-      await fetchMedia(1)
-    }
-  } catch (err: any) {
-    notifyError(err?.message || 'Upload failed')
-  } finally {
-    uploading.value = false
-    if (dialogFileInput.value) dialogFileInput.value.value = ''
+    }))
   }
+
+  if (failCount > 0) {
+    notifyError(failCount === total
+      ? t('admin.media.errors.uploadFailed', { message: `${total}` })
+      : t('admin.media.errors.uploadPartialFailed', { fail: failCount, total }))
+  }
+  activeTab.value = 'library'
+  await fetchMedia(1)
+  uploading.value = false
+  if (dialogFileInput.value) dialogFileInput.value.value = ''
 }
 
 // ── Trigger area: direct upload via drag/click ──
@@ -154,40 +172,58 @@ function triggerDirectUpload() {
 
 function handleTriggerDrop(e: DragEvent) {
   isDragOver.value = false
-  const file = e.dataTransfer?.files[0]
-  if (file && file.type.startsWith('image/')) {
-    doDirectUpload(file)
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+  if (imageFiles.length > 0) {
+    doDirectUpload(imageFiles)
   }
 }
 
 async function handleDirectUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  doDirectUpload(file)
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  doDirectUpload(Array.from(files))
 }
 
-async function doDirectUpload(file: File) {
+async function doDirectUpload(files: File[]) {
   uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await adminAPI.upload(formData, props.scene)
-    const url = (res.data.data as any)?.url
-    if (url) {
-      if (props.multiple) {
-        const current = Array.isArray(props.modelValue) ? [...props.modelValue] : []
-        current.push(url)
-        emit('update:modelValue', current)
-      } else {
-        emit('update:modelValue', url)
+  uploadProgress.value = { current: 0, total: files.length }
+  let failCount = 0
+  const uploadedUrls: string[] = []
+
+  for (let i = 0; i < files.length; i += 3) {
+    const batch = files.slice(i, i + 3)
+    await Promise.allSettled(batch.map(async (file) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      try {
+        const res = await adminAPI.upload(formData, props.scene)
+        const url = (res.data.data as any)?.url
+        if (url) uploadedUrls.push(url)
+      } catch {
+        failCount++
+      } finally {
+        uploadProgress.value.current++
       }
-    }
-  } catch (err: any) {
-    notifyError(err?.message || 'Upload failed')
-  } finally {
-    uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
+    }))
   }
+
+  if (uploadedUrls.length > 0) {
+    if (props.multiple) {
+      const current = Array.isArray(props.modelValue) ? [...props.modelValue] : []
+      emit('update:modelValue', [...current, ...uploadedUrls])
+    } else {
+      emit('update:modelValue', uploadedUrls[uploadedUrls.length - 1]!)
+    }
+  }
+  if (failCount > 0) {
+    notifyError(failCount === files.length
+      ? t('admin.media.errors.uploadFailed', { message: `${files.length}` })
+      : t('admin.media.errors.uploadPartialFailed', { fail: failCount, total: files.length }))
+  }
+  uploading.value = false
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 // ── Remove single image (for multiple mode) ──
@@ -231,7 +267,7 @@ defineExpose({ openPicker })
     @dragover.prevent="isDragOver = true"
     @dragleave="isDragOver = false"
   >
-    <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleDirectUpload" />
+    <input ref="fileInput" type="file" class="hidden" accept="image/*" :multiple="multiple" @change="handleDirectUpload" />
 
     <!-- Has image(s) -->
     <div v-if="hasImage" class="p-4">
@@ -410,9 +446,12 @@ defineExpose({ openPicker })
           </div>
           <p class="text-sm font-medium text-foreground">{{ t('admin.mediaPicker.uploadHint') }}</p>
           <p class="mt-1 text-xs text-muted-foreground">PNG, JPG, GIF, WebP, SVG</p>
-          <div v-if="uploading" class="mt-4 h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+          <div v-if="uploading" class="mt-4 flex items-center gap-2">
+            <div class="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+            <span v-if="uploadProgress.total > 1" class="text-xs text-muted-foreground">{{ t('admin.media.uploadProgress', uploadProgress) }}</span>
+          </div>
         </div>
-        <input ref="dialogFileInput" type="file" class="hidden" accept="image/*" @change="handleDialogUpload" />
+        <input ref="dialogFileInput" type="file" class="hidden" accept="image/*" :multiple="multiple" @change="handleDialogUpload" />
       </div>
 
       <!-- Footer -->

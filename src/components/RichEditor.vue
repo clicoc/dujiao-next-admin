@@ -29,19 +29,24 @@ const emit = defineEmits<{
 }>()
 
 const mediaPickerRef = ref<InstanceType<typeof MediaPicker> | null>(null)
-const mediaPickerValue = ref('')
+const mediaPickerValue = ref<string[]>([])
 
 const openMediaPicker = () => {
   mediaPickerRef.value?.openPicker()
 }
 
 const handleMediaSelected = (value: string | string[]) => {
-  const path = Array.isArray(value) ? value[0] : value
-  if (path && editor.value) {
-    const imageFullUrl = getImageUrl(path)
-    editor.value.chain().focus().setImage({ src: imageFullUrl }).run()
+  const paths = Array.isArray(value) ? value : [value]
+  if (paths.length && editor.value) {
+    let chain = editor.value.chain().focus()
+    for (const path of paths) {
+      if (path) {
+        chain = chain.setImage({ src: getImageUrl(path) })
+      }
+    }
+    chain.run()
   }
-  mediaPickerValue.value = ''
+  mediaPickerValue.value = []
 }
 const { t } = useI18n()
 const showColorPicker = ref(false)
@@ -88,7 +93,7 @@ const editor = useEditor({
       },
     }).configure({
       HTMLAttributes: {
-        class: 'max-w-full h-auto rounded-lg my-4',
+        class: 'max-w-full h-auto rounded-lg',
       },
       inline: true,
       allowBase64: false,
@@ -265,7 +270,7 @@ onBeforeUnmount(() => {
           <path fill-rule="evenodd" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" clip-rule="evenodd" />
         </svg>
       </button>
-      <MediaPicker ref="mediaPickerRef" :model-value="mediaPickerValue" scene="editor" dialog-only @update:model-value="handleMediaSelected" />
+      <MediaPicker ref="mediaPickerRef" :model-value="mediaPickerValue" :multiple="true" scene="editor" dialog-only @update:model-value="handleMediaSelected" />
 
       <div class="relative color-picker-container">
         <button type="button" class="toolbar-btn" :title="t('admin.richEditor.textColor')" @click="showColorPicker = !showColorPicker">
@@ -488,8 +493,14 @@ onBeforeUnmount(() => {
   max-width: 100%;
   height: auto;
   border-radius: 0.5rem;
-  margin-top: 1rem;
+}
+
+:deep(.ProseMirror p:has(+ .tiptap-image-wrapper)) {
   margin-bottom: 1rem;
+}
+
+:deep(.ProseMirror .tiptap-image-wrapper + p:not(:empty)) {
+  margin-top: 1rem;
 }
 
 :deep(.ProseMirror a) {

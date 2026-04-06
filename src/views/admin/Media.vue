@@ -14,6 +14,7 @@ import { confirmAction } from '@/utils/confirm'
 const { t } = useI18n()
 const loading = ref(false)
 const uploading = ref(false)
+const uploadProgress = ref({ current: 0, total: 0 })
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const items = ref<AdminMedia[]>([])
@@ -99,20 +100,37 @@ function triggerUpload() {
 }
 
 async function handleFileChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
   uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    await adminAPI.upload(formData, 'common')
-    fetchMedia(1)
-  } catch (err: any) {
-    notifyError(t('admin.media.errors.uploadFailed', { message: err?.message || '' }))
-  } finally {
-    uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
+  const total = files.length
+  uploadProgress.value = { current: 0, total }
+  let failCount = 0
+
+  const fileList = Array.from(files)
+  for (let i = 0; i < fileList.length; i += 3) {
+    const batch = fileList.slice(i, i + 3)
+    await Promise.allSettled(batch.map(async (file) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      try {
+        await adminAPI.upload(formData, 'common')
+      } catch {
+        failCount++
+      } finally {
+        uploadProgress.value.current++
+      }
+    }))
   }
+
+  if (failCount > 0) {
+    notifyError(failCount === total
+      ? t('admin.media.errors.uploadFailed', { message: `${total}` })
+      : t('admin.media.errors.uploadPartialFailed', { fail: failCount, total }))
+  }
+  fetchMedia(1)
+  uploading.value = false
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 // Inline rename
@@ -171,9 +189,9 @@ onMounted(() => fetchMedia(1))
     <div class="flex flex-wrap items-center justify-between gap-4">
       <h1 class="text-2xl font-bold">{{ t('admin.media.title') }}</h1>
       <Button @click="triggerUpload" :disabled="uploading">
-        {{ uploading ? '...' : t('admin.media.uploadNew') }}
+        {{ uploading ? t('admin.media.uploadProgress', uploadProgress) : t('admin.media.uploadNew') }}
       </Button>
-      <input ref="fileInput" type="file" class="hidden" accept="image/*" @change="handleFileChange" />
+      <input ref="fileInput" type="file" class="hidden" accept="image/*" multiple @change="handleFileChange" />
     </div>
 
     <!-- Filters -->

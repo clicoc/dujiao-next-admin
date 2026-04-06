@@ -65,6 +65,7 @@ const tabs = computed(() => [
   { label: t('admin.settings.tabs.telegram'), value: 'telegram' },
   { label: t('admin.settings.tabs.dashboard'), value: 'dashboard' },
   { label: t('admin.settings.tabs.wallet'), value: 'wallet' },
+  { label: t('admin.settings.tabs.callbackRoutes'), value: 'callback_routes' },
 ])
 
 const fallbackCurrencyOptions = [
@@ -290,6 +291,85 @@ const walletForm = reactive({
 })
 const walletPaymentChannels = ref<AdminPaymentChannel[]>([])
 const walletSaving = ref(false)
+
+// --- 回调路由配置 ---
+const callbackRoutesForm = reactive({
+  payment_callback: '',
+  paypal_webhook: '',
+  stripe_webhook: '',
+  upstream_callback: '',
+})
+const callbackRoutesSaving = ref(false)
+const callbackRoutesLoaded = ref(false)
+
+const loadCallbackRoutes = async () => {
+  try {
+    const res = await adminAPI.getSettings({ key: 'callback_routes_config' })
+    const data = res.data?.data as Record<string, string> | null
+    if (data) {
+      callbackRoutesForm.payment_callback = data.payment_callback || ''
+      callbackRoutesForm.paypal_webhook = data.paypal_webhook || ''
+      callbackRoutesForm.stripe_webhook = data.stripe_webhook || ''
+      callbackRoutesForm.upstream_callback = data.upstream_callback || ''
+    }
+  } catch {
+    // 未配置时保持空值
+  }
+  callbackRoutesLoaded.value = true
+}
+
+const reservedRoutePrefixes = [
+  '/api/v1/public/', '/api/v1/admin/', '/api/v1/auth/',
+  '/api/v1/guest/', '/api/v1/channel/', '/api/v1/upstream/api/', '/api/v1/user/',
+]
+
+const saveCallbackRoutes = async () => {
+  // 验证：非空值必须以 /api/ 开头，且不能与已有路由冲突
+  const fields = [
+    { key: 'payment_callback', value: callbackRoutesForm.payment_callback },
+    { key: 'paypal_webhook', value: callbackRoutesForm.paypal_webhook },
+    { key: 'stripe_webhook', value: callbackRoutesForm.stripe_webhook },
+    { key: 'upstream_callback', value: callbackRoutesForm.upstream_callback },
+  ]
+  const nonEmptyPaths: string[] = []
+  for (const field of fields) {
+    const v = field.value.trim().replace(/\/+$/, '')
+    if (v && !v.startsWith('/api/')) {
+      notifyError(t('admin.settings.callbackRoutes.mustStartWithApi'))
+      return
+    }
+    if (v) {
+      const vSlash = v + '/'
+      if (reservedRoutePrefixes.some(p => vSlash.startsWith(p) || p.startsWith(vSlash))) {
+        notifyError(t('admin.settings.callbackRoutes.conflictWithSystem'))
+        return
+      }
+      if (nonEmptyPaths.includes(v)) {
+        notifyError(t('admin.settings.callbackRoutes.duplicatePath'))
+        return
+      }
+      nonEmptyPaths.push(v)
+    }
+  }
+
+  callbackRoutesSaving.value = true
+  try {
+    await adminAPI.updateSettings({
+      key: 'callback_routes_config',
+      value: {
+        payment_callback: callbackRoutesForm.payment_callback.trim(),
+        paypal_webhook: callbackRoutesForm.paypal_webhook.trim(),
+        stripe_webhook: callbackRoutesForm.stripe_webhook.trim(),
+        upstream_callback: callbackRoutesForm.upstream_callback.trim(),
+      },
+    } as any)
+    notifySuccess(t('admin.settings.saved'))
+  } catch (err: any) {
+    notifyError(err?.message || t('admin.settings.saveFailed'))
+  } finally {
+    callbackRoutesSaving.value = false
+  }
+}
 
 const toggleWalletRechargeChannel = (channelId: number) => {
   const idx = walletForm.recharge_channel_ids.indexOf(channelId)
@@ -712,6 +792,9 @@ watch(currentTab, (newTab) => {
   if (newTab === 'wallet' && walletPaymentChannels.value.length === 0) {
     loadWalletPaymentChannels()
     loadWalletConfig()
+  }
+  if (newTab === 'callback_routes' && !callbackRoutesLoaded.value) {
+    loadCallbackRoutes()
   }
 })
 </script>
@@ -1263,6 +1346,50 @@ watch(currentTab, (newTab) => {
           <div class="flex justify-end border-t border-border pt-4">
             <Button :disabled="walletSaving" @click="saveWalletConfig">
               {{ walletSaving ? t('admin.settings.actions.saving') : t('admin.settings.actions.save') }}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 回调路由配置 -->
+    <div v-show="currentTab === 'callback_routes'" class="space-y-6">
+      <div class="rounded-xl border border-border bg-card">
+        <div class="border-b border-border bg-muted/40 px-6 py-4">
+          <h2 class="text-lg font-semibold">{{ t('admin.settings.callbackRoutes.title') }}</h2>
+          <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.settings.callbackRoutes.subtitle') }}</p>
+        </div>
+        <div class="space-y-6 p-6">
+          <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+            <p class="text-xs text-amber-600 dark:text-amber-400">{{ t('admin.settings.callbackRoutes.warning') }}</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-6">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.callbackRoutes.paymentCallback') }}</label>
+              <input v-model="callbackRoutesForm.payment_callback" type="text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" :placeholder="t('admin.settings.callbackRoutes.paymentCallbackPlaceholder')" />
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.callbackRoutes.defaultPath') }}: /api/v1/payments/callback</p>
+            </div>
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.callbackRoutes.paypalWebhook') }}</label>
+              <input v-model="callbackRoutesForm.paypal_webhook" type="text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" :placeholder="t('admin.settings.callbackRoutes.webhookPlaceholder')" />
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.callbackRoutes.defaultPath') }}: /api/v1/payments/webhook/paypal</p>
+            </div>
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.callbackRoutes.stripeWebhook') }}</label>
+              <input v-model="callbackRoutesForm.stripe_webhook" type="text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" :placeholder="t('admin.settings.callbackRoutes.webhookPlaceholder')" />
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.callbackRoutes.defaultPath') }}: /api/v1/payments/webhook/stripe</p>
+            </div>
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.callbackRoutes.upstreamCallback') }}</label>
+              <input v-model="callbackRoutesForm.upstream_callback" type="text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" :placeholder="t('admin.settings.callbackRoutes.callbackPlaceholder')" />
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.callbackRoutes.defaultPath') }}: /api/v1/upstream/callback</p>
+            </div>
+          </div>
+
+          <div class="flex justify-end border-t border-border pt-4">
+            <Button :disabled="callbackRoutesSaving" @click="saveCallbackRoutes">
+              {{ callbackRoutesSaving ? t('admin.settings.actions.saving') : t('admin.settings.actions.save') }}
             </Button>
           </div>
         </div>

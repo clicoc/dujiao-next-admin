@@ -21,7 +21,7 @@ import { buildAdminCategoryPath, createAdminCategoryMap, createAdminCategoryChil
 const { t } = useI18n()
 const loading = ref(false)
 const searchQuery = ref('')
-const manualStockStatus = ref('all')
+const stockStatus = ref('all')
 const jumpPage = ref('')
 const route = useRoute()
 const router = useRouter()
@@ -206,7 +206,7 @@ const fetchProducts = async () => {
       page: pagination.page,
       page_size: pagination.page_size,
       search: searchQuery.value,
-      manual_stock_status: manualStockStatus.value,
+      stock_status: stockStatus.value,
     })
     products.value = res.data.data || []
     if (res.data.pagination) {
@@ -263,7 +263,7 @@ const debouncedSearch = useDebounceFn(handleSearch, 300)
 
 const resetFilters = () => {
   searchQuery.value = ''
-  manualStockStatus.value = 'all'
+  stockStatus.value = 'all'
   pagination.page = 1
   fetchProducts()
   nextTick(() => {
@@ -425,7 +425,7 @@ watch(
           />
         </div>
         <div class="w-full md:w-56">
-          <Select v-model="manualStockStatus" @update:modelValue="handleSearch">
+          <Select v-model="stockStatus" @update:modelValue="handleSearch">
             <SelectTrigger class="h-9 w-full">
               <SelectValue :placeholder="t('admin.products.filters.stockStatusPlaceholder')" />
             </SelectTrigger>

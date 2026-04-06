@@ -545,14 +545,14 @@ onMounted(() => {
               <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>{{ t('admin.dashboard.trends.ordersPaid') }}</span>
             </div>
             <div class="overflow-x-auto">
-              <div class="flex min-w-[640px] items-end gap-2 rounded-lg bg-muted/20 px-2 py-3">
-                <div v-for="point in trendPoints" :key="point.date" class="flex w-6 flex-col items-center gap-1">
+              <div class="inline-flex items-end gap-2 rounded-lg bg-muted/20 px-2 py-3">
+                <div v-for="point in trendPoints" :key="point.date" class="flex shrink-0 flex-col items-center gap-1">
                   <div class="flex h-32 items-end gap-0.5">
                     <div class="w-2 rounded-t bg-primary/80" :style="{ height: orderTotalHeight(point.orders_total) }" :title="`${t('admin.dashboard.trends.ordersTotal')}: ${point.orders_total}`"></div>
                     <div class="w-2 rounded-t bg-emerald-500/80" :style="{ height: orderPaidHeight(point.orders_paid) }" :title="`${t('admin.dashboard.trends.ordersPaid')}: ${point.orders_paid}`"></div>
                   </div>
-                  <div class="text-[10px] text-muted-foreground">{{ shortDate(point.date) }}</div>
-                  <div class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400" :title="`${t('admin.dashboard.trends.profit')}: ${formatMoney(point.profit, overview?.currency)}`">{{ formatMoney(point.profit, overview?.currency) }}</div>
+                  <div class="whitespace-nowrap text-[10px] text-muted-foreground">{{ shortDate(point.date) }}</div>
+                  <div class="whitespace-nowrap text-[10px] font-medium text-emerald-600 dark:text-emerald-400">{{ formatMoney(point.profit, overview?.currency) }}</div>
                 </div>
               </div>
             </div>
@@ -573,13 +573,13 @@ onMounted(() => {
               <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-rose-500"></span>{{ t('admin.dashboard.trends.paymentsFailed') }}</span>
             </div>
             <div class="overflow-x-auto">
-              <div class="flex min-w-[640px] items-end gap-2 rounded-lg bg-muted/20 px-2 py-3">
-                <div v-for="point in trendPoints" :key="`${point.date}-payment`" class="flex w-6 flex-col items-center gap-1">
+              <div class="inline-flex items-end gap-2 rounded-lg bg-muted/20 px-2 py-3">
+                <div v-for="point in trendPoints" :key="`${point.date}-payment`" class="flex shrink-0 flex-col items-center gap-1">
                   <div class="flex h-32 items-end gap-0.5">
                     <div class="w-2 rounded-t bg-sky-500/80" :style="{ height: paymentSuccessHeight(point.payments_success) }" :title="`${t('admin.dashboard.trends.paymentsSuccess')}: ${point.payments_success}`"></div>
                     <div class="w-2 rounded-t bg-rose-500/80" :style="{ height: paymentFailedHeight(point.payments_failed) }" :title="`${t('admin.dashboard.trends.paymentsFailed')}: ${point.payments_failed}`"></div>
                   </div>
-                  <div class="text-[10px] text-muted-foreground">{{ shortDate(point.date) }}</div>
+                  <div class="whitespace-nowrap text-[10px] text-muted-foreground">{{ shortDate(point.date) }}</div>
                 </div>
               </div>
             </div>
