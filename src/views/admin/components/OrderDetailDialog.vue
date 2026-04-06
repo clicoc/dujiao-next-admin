@@ -95,10 +95,8 @@ const channelTypeLabel = (value?: string) => {
 }
 
 const itemProfit = (item: AdminOrderItem) => {
-  const revenue = parseMoneyValue(item.unit_price) * (item.quantity || 1)
+  const revenue = parseMoneyValue(item.total_price)
     - parseMoneyValue(item.coupon_discount_amount)
-    - parseMoneyValue(item.promotion_discount_amount)
-    - parseMoneyValue(item.member_discount_amount)
   const cost = parseMoneyValue(item.cost_price) * (item.quantity || 1)
   return Number((revenue - cost).toFixed(2))
 }
