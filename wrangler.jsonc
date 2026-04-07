@@ -1,5 +1,5 @@
 {
-  "name": "dujiao-next-user",
+  "name": "dujiao-next-admin",
   "main": "worker.ts", 
   "compatibility_date": "2026-03-27",
   "assets": {
