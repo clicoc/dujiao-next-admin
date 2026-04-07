@@ -397,6 +397,12 @@ export interface AdminPaymentChannel {
   interaction_mode: string
   fee_rate: number | string
   fixed_fee?: number | string
+  min_amount?: number | string
+  max_amount?: number | string
+  hide_amount_out_range?: boolean
+  payment_types?: string[]
+  payment_roles?: string[]
+  member_levels?: number[]
   config_json: Record<string, unknown>
   icon: string
   is_active: boolean

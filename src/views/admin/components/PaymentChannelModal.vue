@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { onMounted, computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import type { AdminMemberLevel } from '@/api/types'
+import { getLocalizedText } from '@/utils/format'
 import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogScrollContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelect } from '@/components/ui/multi-select'
 
 const props = defineProps<{
   modelValue: boolean
@@ -35,11 +38,27 @@ const form = reactive({
   interaction_mode: 'qr',
   fee_rate: '0',
   fixed_fee: '0',
+  min_amount: '0',
+  max_amount: '0',
+  hide_amount_out_range: false,
+  payment_types: [] as string[],
+  payment_roles: [] as string[],
+  member_levels: [] as number[],
   config_json: '',
   is_active: true,
   sort_order: 10,
 })
 
+const memberLevels = ref<AdminMemberLevel[]>([])
+
+onMounted(async () => {
+  try {
+    const mlRes = await adminAPI.getMemberLevels({ page: 1, page_size: 100 })
+    memberLevels.value = mlRes.data.data || []
+  } catch (error) {
+    console.error('Failed to load member levels config:', error)
+  }
+})
 
 const epayConfig = reactive({
   epay_version: 'v2',
@@ -165,6 +184,23 @@ const channelOptions = [
   ...officialChannelOptions,
   ...okpayChannelOptions,
 ]
+
+const paymentTypeOptions = computed(() => [
+  { value: 'order', label: t('admin.paymentChannels.paymentTypes.order') },
+  { value: 'wallet', label: t('admin.paymentChannels.paymentTypes.wallet') },
+])
+
+const paymentRoleOptions = computed(() => [
+  { value: 'guest', label: t('admin.paymentChannels.paymentRoles.guest') },
+  { value: 'member', label: t('admin.paymentChannels.paymentRoles.member') },
+])
+
+const memberLevelOptions = computed(() =>
+  memberLevels.value.map((ml) => ({
+    label: getLocalizedText(ml.name) || 'Unknown',
+    value: ml.id,
+  }))
+)
 
 const formChannelOptions = computed(() => {
   if (form.provider_type === 'epay') {
@@ -696,6 +732,12 @@ function resetFormForCreate() {
   form.interaction_mode = 'qr'
   form.fee_rate = '0'
   form.fixed_fee = '0'
+  form.min_amount = '0'
+  form.max_amount = '0'
+  form.hide_amount_out_range = false
+  form.payment_types = []
+  form.payment_roles = []
+  form.member_levels = []
   form.config_json = ''
   form.is_active = true
   form.sort_order = 10
@@ -736,6 +778,12 @@ watch(
         form.interaction_mode = channel.interaction_mode
         form.fee_rate = channel.fee_rate !== undefined && channel.fee_rate !== null ? String(channel.fee_rate) : '0'
         form.fixed_fee = channel.fixed_fee !== undefined && channel.fixed_fee !== null ? String(channel.fixed_fee) : '0'
+        form.min_amount = channel.min_amount !== undefined && channel.min_amount !== null ? String(channel.min_amount) : '0'
+        form.max_amount = channel.max_amount !== undefined && channel.max_amount !== null ? String(channel.max_amount) : '0'
+        form.hide_amount_out_range = Boolean(channel.hide_amount_out_range)
+        form.payment_types = Array.isArray(channel.payment_types) ? channel.payment_types : []
+        form.payment_roles = Array.isArray(channel.payment_roles) ? channel.payment_roles : []
+        form.member_levels = Array.isArray(channel.member_levels) ? channel.member_levels : []
         form.config_json = channel.config_json ? JSON.stringify(channel.config_json, null, 2) : ''
         form.is_active = !!channel.is_active
         form.sort_order = channel.sort_order || 0
@@ -838,6 +886,12 @@ const handleSubmit = async () => {
     interaction_mode: form.interaction_mode,
     fee_rate: String(form.fee_rate || '0').trim(),
     fixed_fee: String(form.fixed_fee || '0').trim(),
+    min_amount: String(form.min_amount || '0').trim(),
+    max_amount: String(form.max_amount || '0').trim(),
+    hide_amount_out_range: form.hide_amount_out_range,
+    payment_types: form.payment_types,
+    payment_roles: form.payment_roles,
+    member_levels: form.member_levels,
     config_json: configJson,
     is_active: form.is_active,
     sort_order: form.sort_order,
@@ -925,6 +979,43 @@ const closeModal = () => {
           <div class="min-w-0">
             <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.fixedFee') }}</label>
             <Input v-model="form.fixed_fee" type="number" step="0.01" min="0" :placeholder="t('admin.paymentChannels.modal.fixedFeePlaceholder')" />
+          </div>
+          <div class="min-w-0">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.minAmount') }}</label>
+            <Input v-model="form.min_amount" type="number" step="0.01" min="0" :placeholder="t('admin.paymentChannels.modal.minAmountPlaceholder')" />
+          </div>
+          <div class="min-w-0">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.maxAmount') }}</label>
+            <Input v-model="form.max_amount" type="number" step="0.01" min="0" :placeholder="t('admin.paymentChannels.modal.maxAmountPlaceholder')" />
+          </div>
+          <div class="mt-2 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:items-center">
+            <input v-model="form.hide_amount_out_range" type="checkbox" class="h-4 w-4 accent-primary" />
+            <span class="text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.hideAmountOutRange') }}</span>
+          </div>
+          <div class="min-w-0 md:col-span-2">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.paymentTypes') }}</label>
+            <MultiSelect
+              v-model="form.payment_types"
+              :options="paymentTypeOptions"
+              :placeholder="t('admin.paymentChannels.modal.paymentTypesPlaceholder')"
+            />
+          </div>
+          <div class="min-w-0 md:col-span-2">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.paymentRoles') }}</label>
+            <MultiSelect
+              v-model="form.payment_roles"
+              :options="paymentRoleOptions"
+              :placeholder="t('admin.paymentChannels.modal.paymentRolesPlaceholder')"
+            />
+          </div>
+          <div class="min-w-0 md:col-span-2">
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.memberLevels') }}</label>
+            <MultiSelect
+              v-model="form.member_levels"
+              :options="memberLevelOptions"
+              :placeholder="t('admin.paymentChannels.modal.memberLevelsPlaceholder')"
+              :disabled="memberLevels.length === 0"
+            />
           </div>
           <div class="mt-2 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:items-center">
             <input v-model="form.is_active" type="checkbox" class="h-4 w-4 accent-primary" />
